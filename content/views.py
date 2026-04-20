@@ -69,10 +69,34 @@ def player_manifest(request, content_type_str, object_id):
                     "meta_info": {"language": extra.language}
                 })
 
-    # На этом этапе можно также дернуть внешний Агрегатор плагинов и добавить external_sources
-    # (Сделаем это в Итерации 6)
+        # На этом этапе можно также дернуть внешний Агрегатор плагинов и добавить external_sources
+        # (Сделаем это в Итерации 6)
+        from aggregator.services import get_external_sources
 
-    return Response({
-        "content_id": str(object_id),
-        "sources": sources
-    })
+        external_ids = {}
+        content_obj = ctype.get_object_for_this_type(id=object_id)
+
+        # Если это эпизод, берем ID от родительского тайтла (зачастую плагинам нужен TMDB сериала + season/episode)
+        # Для простоты MVP пока передаем просто ID тайтла.
+        if content_type_str.lower() == 'episode':
+            if content_obj.title.imdb_id:
+                external_ids['imdb'] = content_obj.title.imdb_id
+            if content_obj.title.tmdb_id:
+                external_ids['tmdb'] = content_obj.title.tmdb_id
+            external_ids['season'] = content_obj.season_number
+            external_ids['episode'] = content_obj.episode_number
+        else:
+            if content_obj.imdb_id:
+                external_ids['imdb'] = content_obj.imdb_id
+            if content_obj.tmdb_id:
+                external_ids['tmdb'] = content_obj.tmdb_id
+
+        external_sources = get_external_sources(external_ids)
+
+        # Добавляем внешние источники к локальным
+        sources.extend(external_sources)
+
+        return Response({
+            "content_id": str(object_id),
+            "sources": sources
+        })
