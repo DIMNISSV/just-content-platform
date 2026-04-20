@@ -1,11 +1,12 @@
+from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import api_view, action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
-from django.contrib.contenttypes.models import ContentType
-from django.conf import settings
-from .models import Title, Episode, TrackGroup, TrackGroupRating, TitleRating
-from .serializers import TitleSerializer, TitleDetailSerializer
+
+from .models import Title, Episode, TrackGroup, TrackGroupRating, TitleRating, WatchHistory
+from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer
 
 
 class TitleViewSet(viewsets.ReadOnlyModelViewSet):
@@ -148,3 +149,110 @@ def player_manifest(request, content_type_str, object_id):
             "content_id": str(object_id),
             "sources": sources
         })
+
+
+@api_view(['POST'])
+def player_telemetry(request):
+    """
+    Called by the video player every X seconds to save progress.
+    Expected JSON: {"title_id": 1, "episode_id": null, "track_group_id": 2, "progress_ms": 15000, "is_completed": false}
+    """
+    if not request.user.is_authenticated:
+        return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    title_id = request.data.get('title_id')
+    progress_ms = request.data.get('progress_ms', 0)
+    is_completed = request.data.get('is_completed', False)
+
+    if not title_id:
+        return Response({"error": "title_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        title = Title.objects.get(id=title_id)
+    except Title.DoesNotExist:
+        return Response({"error": "Title not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    episode_id = request.data.get('episode_id')
+    track_group_id = request.data.get('track_group_id')
+
+    episode = Episode.objects.filter(id=episode_id).first() if episode_id else None
+    track_group = TrackGroup.objects.filter(id=track_group_id).first() if track_group_id else None
+
+    # Update or create the history record for this title
+    history, created = WatchHistory.objects.update_or_create(
+        user=request.user,
+        title=title,
+        defaults={
+            'episode': episode,
+            'track_group': track_group,
+            'progress_ms': progress_ms,
+            'is_completed': is_completed
+        }
+    )
+
+    return Response({"status": "saved", "progress_ms": history.progress_ms})
+
+
+@api_view(['GET'])
+def continue_watching(request):
+    """
+    Returns the user's unfinished watch history.
+    """
+    if not request.user.is_authenticated:
+        return Response([])
+
+    # Get recent history where content is not finished
+    history = WatchHistory.objects.filter(
+        user=request.user,
+        is_completed=False
+    ).select_related('title', 'episode')[:10]
+
+    serializer = WatchHistorySerializer(history, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+def recommendations(request):
+    """
+    Simple Content-Based Filtering algorithm v1.0.
+    Finds highly-rated titles with genres matching the user's recently watched titles.
+    """
+    # 1. Fallback for anonymous users: Top Rated
+    if not request.user.is_authenticated:
+        top_titles = Title.objects.order_by('-rating_score', '-votes_count')[:10]
+        return Response(TitleSerializer(top_titles, many=True).data)
+
+    # 2. Get user's last 3 watched titles
+    recent_history = WatchHistory.objects.filter(user=request.user).order_by('-updated_at')[:3]
+
+    if not recent_history:
+        # User has no history yet, return Top Rated
+        top_titles = Title.objects.order_by('-rating_score', '-votes_count')[:10]
+        return Response(TitleSerializer(top_titles, many=True).data)
+
+    # 3. Extract preferred genres
+    preferred_genres = set()
+    for item in recent_history:
+        for genre in item.title.genres.all():
+            preferred_genres.add(genre.id)
+
+    # 4. Find titles matching these genres, exclude already watched
+    watched_title_ids = WatchHistory.objects.filter(user=request.user).values_list('title_id', flat=True)
+
+    recommended = Title.objects.filter(
+        genres__in=preferred_genres
+    ).exclude(
+        id__in=watched_title_ids
+    ).distinct().order_by('-rating_score')[:10]
+
+    # 5. If recommendations are fewer than 10 (e.g. niche genres), pad with overall top titles
+    if len(recommended) < 10:
+        pad_amount = 10 - len(recommended)
+        extra_titles = Title.objects.exclude(
+            id__in=watched_title_ids
+        ).exclude(
+            id__in=[t.id for t in recommended]
+        ).order_by('-rating_score')[:pad_amount]
+        recommended = list(recommended) + list(extra_titles)
+
+    return Response(TitleSerializer(recommended, many=True).data)

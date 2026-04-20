@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Title, Episode, Genre
+from .models import Title, Episode, Genre, WatchHistory
 
 
 class GenreSerializer(serializers.ModelSerializer):
@@ -32,3 +32,16 @@ class TitleDetailSerializer(TitleSerializer):
 
     class Meta(TitleSerializer.Meta):
         fields = TitleSerializer.Meta.fields + ['episodes']
+
+
+class WatchHistorySerializer(serializers.ModelSerializer):
+    # Nested serializer to quickly display title info in the UI (poster, name)
+    title = TitleSerializer(read_only=True)
+    episode = EpisodeSerializer(read_only=True)
+
+    class Meta:
+        model = WatchHistory
+        fields = [
+            'id', 'title', 'episode', 'track_group',
+            'progress_ms', 'is_completed', 'updated_at'
+        ]

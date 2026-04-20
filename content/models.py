@@ -128,3 +128,26 @@ class TrackGroupRating(models.Model):
 
     def __str__(self):
         return f"{self.user} rated {self.track_group} - {self.score}"
+
+
+class WatchHistory(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='watch_history')
+    title = models.ForeignKey(Title, on_delete=models.CASCADE, related_name='watch_history')
+
+    # Optional: If watching a series, we store the specific episode
+    episode = models.ForeignKey(Episode, on_delete=models.CASCADE, null=True, blank=True)
+
+    # Optional: Remember user's preferred voiceover/track group
+    track_group = models.ForeignKey(TrackGroup, on_delete=models.SET_NULL, null=True, blank=True)
+
+    progress_ms = models.PositiveIntegerField(default=0, help_text="Current playback position in milliseconds")
+    is_completed = models.BooleanField(default=False, help_text="True if watched till the end credits")
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'title')  # We keep only the latest progress per Title
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.user} watching {self.title} ({self.progress_ms}ms)"
