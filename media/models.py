@@ -3,7 +3,7 @@ import uuid
 from django.db import models
 
 
-class RawMediaFile(models.fields.Model):
+class RawMediaFile(models.Model):
     class Status(models.TextChoices):
         PENDING = 'PENDING', 'Pending Analysis'
         ANALYZING = 'ANALYZING', 'Analyzing via FFprobe'
@@ -11,7 +11,7 @@ class RawMediaFile(models.fields.Model):
         ERROR = 'ERROR', 'Error'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    file = models.FileField(upload_form='raw_uploads/')
+    file = models.FileField(upload_to='raw_uploads/')
     original_name = models.CharField(max_length=255)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     metadata = models.JSONField(blank=True, null=True, help_text="FFprobe output")
@@ -22,7 +22,7 @@ class RawMediaFile(models.fields.Model):
         return f"{self.original_name} ({self.status})"
 
 
-class MediaStream(models.fields.Model):
+class MediaStream(models.Model):
     class StreamType(models.TextChoices):
         VIDEO = 'VIDEO', 'Video'
         AUDIO = 'AUDIO', 'Audio'
@@ -47,7 +47,7 @@ class MediaStream(models.fields.Model):
         return f"Stream #{self.index} - {self.codec_type} {self.codec_name} {lang}"
 
 
-class Asset(models.fields.Model):
+class Asset(models.Model):
     class Type(models.TextChoices):
         VIDEO = 'VIDEO', 'Video (HLS/MP4)'
         AUDIO = 'AUDIO', 'Audio (AAC/M4A)'

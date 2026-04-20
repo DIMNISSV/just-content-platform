@@ -17,7 +17,6 @@ import environ
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
@@ -31,9 +30,7 @@ SECRET_KEY = env('SECRET_KEY', default='unsafe-dev-key-change-me')
 
 DEBUG = env('DEBUG')
 
-ALLOWED_HOSTS =['*']
-
-
+ALLOWED_HOSTS = ['*']
 
 # Application definition
 
@@ -44,6 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
     'users.apps.UsersConfig',
     'media.apps.MediaConfig',
     'content.apps.ContentConfig',
@@ -79,7 +77,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
@@ -105,8 +102,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
-
 AUTH_USER_MODEL = 'users.User'
 
 LANGUAGE_CODE = 'en-us'
@@ -125,3 +120,7 @@ CELERY_BROKER_URL = env('CELERY_BROKER_URL')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 
+REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
+    'PAGE_SIZE': 20,
+}
