@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.views.generic import ListView
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import api_view, action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
@@ -256,3 +257,13 @@ def recommendations(request):
         recommended = list(recommended) + list(extra_titles)
 
     return Response(TitleSerializer(recommended, many=True).data)
+
+
+class HomeView(ListView):
+    model = Title
+    template_name = 'content/home.html'
+    context_object_name = 'titles'
+
+    def get_queryset(self):
+        # Получаем последние добавленные фильмы с сортировкой по рейтингу
+        return Title.objects.all().order_by('-rating_score', '-created_at')[:24]

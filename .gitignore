@@ -20,3 +20,5 @@ media_storage/
 *.iws
 *.iml
 *.ipr
+
+node_modules/
