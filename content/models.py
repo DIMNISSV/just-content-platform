@@ -1,6 +1,8 @@
-from django.db import models
+from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
+from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db import models
 
 
 class Genre(models.Model):
@@ -21,13 +23,15 @@ class Title(models.Model):
     original_name = models.CharField(max_length=255, blank=True)
     description = models.TextField(blank=True)
     release_year = models.IntegerField(null=True, blank=True)
-    genres = models.ManyToManyField(Genre, blank=True)
+    genres = models.ManyToManyField('Genre', blank=True)
     imdb_id = models.CharField(max_length=20, blank=True)
     tmdb_id = models.CharField(max_length=20, blank=True)
     poster = models.ImageField(upload_to='posters/', null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
 
-    # Прямая связь для получения сборок дорожек (Для фильмов)
+    rating_score = models.FloatField(default=0.0, db_index=True)
+    votes_count = models.IntegerField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
     track_groups = GenericRelation('TrackGroup')
 
     def __str__(self):
@@ -71,6 +75,9 @@ class TrackGroup(models.Model):
         related_name='track_groups'
     )
 
+    rating_score = models.FloatField(default=0.0)
+    votes_count = models.IntegerField(default=0)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -93,3 +100,31 @@ class AdditionalTrack(models.Model):
 
     def __str__(self):
         return f"{self.language} track for {self.track_group.name}"
+
+
+class TitleRating(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='title_ratings')
+    title = models.ForeignKey(Title, on_delete=models.CASCADE, related_name='ratings')
+    score = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(10)])
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'title')  # Один юзер - одна оценка на фильм
+
+    def __str__(self):
+        return f"{self.user} rated {self.title} - {self.score}"
+
+
+class TrackGroupRating(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='track_ratings')
+    track_group = models.ForeignKey(TrackGroup, on_delete=models.CASCADE, related_name='ratings')
+    score = models.PositiveSmallIntegerField(validators=[MinValueValidator(1), MaxValueValidator(10)])
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'track_group')
+
+    def __str__(self):
+        return f"{self.user} rated {self.track_group} - {self.score}"
