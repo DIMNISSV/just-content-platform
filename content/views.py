@@ -327,3 +327,16 @@ def save_workbench(request, content_type_str, object_id):
             continue
 
     return Response({"status": "success", "track_group_id": track_group.id})
+
+
+class EpisodeWatchView(DetailView):
+    model = Episode
+    template_name = 'content/watch.html'  # Используем тот же шаблон
+    context_object_name = 'episode'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Для шаблона watch.html подменяем title, чтобы он не упал
+        context['title'] = self.object.title
+        context['content_type'] = 'episode'
+        return context

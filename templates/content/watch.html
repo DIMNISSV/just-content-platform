@@ -3,39 +3,56 @@
 {% block title %}Watching {{ title.name }} - Just Content{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8">
-    <!-- Плеер (Монтируем Vue здесь) -->
-    <div
-        id="vue-player-mount"
-        class="w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl"
-        data-content-id="{{ title.id }}"
-        data-content-type="{{ content_type }}"
-    >
-        <!-- Loader placeholder -->
-        <div class="w-full h-full flex items-center justify-center">
-            <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-brand"></div>
+    <div class="container mx-auto px-4 py-8">
+        <!-- Плеер (Монтируем Vue здесь) -->
+        <div
+                id="vue-player-mount"
+                class="w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl"
+                data-content-id="{{ title.id }}"
+                data-content-type="{{ content_type }}"
+        >
+            <!-- Loader placeholder -->
+            <div class="w-full h-full flex items-center justify-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-brand"></div>
+            </div>
         </div>
-    </div>
 
-    <!-- Информация под плеером -->
-    <div class="mt-8 flex flex-col md:flex-row gap-8">
-        <div class="w-full md:w-1/4">
-            {% if title.poster %}
-                <img src="{{ title.poster.url }}" class="w-full rounded-lg shadow-lg">
-            {% endif %}
-        </div>
-        <div class="w-full md:w-3/4">
-            <h1 class="text-4xl font-bold mb-2">{{ title.name }}</h1>
-            <p class="text-gray-400 text-lg mb-4">{{ title.original_name }} ({{ title.release_year }})</p>
+        <!-- Информация под плеером -->
+        <div class="mt-8 flex flex-col md:flex-row gap-8">
+            <div class="w-full md:w-1/4">
+                {% if title.poster %}
+                    <img src="{{ title.poster.url }}" class="w-full rounded-lg shadow-lg">
+                {% endif %}
+            </div>
+            <div class="w-full md:w-3/4">
+                <h1 class="text-4xl font-bold mb-2">{{ title.name }}</h1>
+                <p class="text-gray-400 text-lg mb-4">{{ title.original_name }} ({{ title.release_year }})</p>
 
-            <div class="flex gap-2 mb-6">
-                {% for genre in title.genres.all %}
-                    <span class="bg-gray-800 px-3 py-1 rounded-full text-xs">{{ genre.name }}</span>
-                {% endfor %}
+                <div class="flex gap-2 mb-6">
+                    {% for genre in title.genres.all %}
+                        <span class="bg-gray-800 px-3 py-1 rounded-full text-xs">{{ genre.name }}</span>
+                    {% endfor %}
+                </div>
+
+                <p class="text-gray-300 leading-relaxed">{{ title.description }}</p>
             </div>
 
-            <p class="text-gray-300 leading-relaxed">{{ title.description }}</p>
+            {% if title.type == 'SERIES' %}
+                <div class="mt-12 bg-card p-6 rounded-xl border border-gray-800">
+                    <h2 class="text-2xl font-bold mb-4">Episodes</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                        {% for ep in title.episodes.all %}
+                            <a href="{% url 'watch-episode' ep.id %}"
+                               class="block p-4 rounded bg-gray-900 hover:bg-gray-800 border border-transparent hover:border-brand transition">
+                                <div class="text-xs text-gray-500 uppercase font-bold">
+                                    Season {{ ep.season_number }}</div>
+                                <div class="text-sm">E{{ ep.episode_number }}: {{ ep.name|default:"Episode " }}</div>
+                            </a>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+
         </div>
     </div>
-</div>
 {% endblock %}

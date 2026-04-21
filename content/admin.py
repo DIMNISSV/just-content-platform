@@ -6,15 +6,18 @@ from django.utils.html import format_html
 
 from .models import Genre, Title, Episode, TrackGroup, AdditionalTrack
 
+
 @admin.register(Genre)
 class GenreAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
+
 
 class AdditionalTrackInline(admin.TabularInline):
     model = AdditionalTrack
     extra = 0
     # raw_id_fields удобен, когда ассетов станут тысячи, чтобы не грузить огромный селект
     raw_id_fields = ('asset',)
+
 
 @admin.register(TrackGroup)
 class TrackGroupAdmin(admin.ModelAdmin):
@@ -23,19 +26,22 @@ class TrackGroupAdmin(admin.ModelAdmin):
     raw_id_fields = ('video_asset',)
     inlines = [AdditionalTrackInline]
 
+
 class TrackGroupGenericInline(GenericTabularInline):
     model = TrackGroup
     extra = 0
     raw_id_fields = ('video_asset',)
-    show_change_link = True # Позволяет кликнуть на группу и перейти к добавлению аудио-дорожек
+    show_change_link = True  # Позволяет кликнуть на группу и перейти к добавлению аудио-дорожек
+
 
 class EpisodeInline(admin.TabularInline):
     model = Episode
     extra = 0
 
+
 @admin.register(Title)
 class TitleAdmin(admin.ModelAdmin):
-    list_display = ('name', 'type', 'release_year', 'workbench_link') # Добавили ссылку
+    list_display = ('name', 'type', 'release_year', 'workbench_link')  # Добавили ссылку
     list_filter = ('type', 'genres')
     search_fields = ('name', 'original_name')
     filter_horizontal = ('genres',)
@@ -44,14 +50,16 @@ class TitleAdmin(admin.ModelAdmin):
     # Создаем кнопку-ссылку в списке фильмов
     def workbench_link(self, obj):
         return format_html('<a class="button" href="{}/workbench/">Open Workbench</a>', obj.pk)
+
     workbench_link.short_description = 'Workbench'
     workbench_link.allow_tags = True
 
     # Регистрируем кастомный URL внутри админки Title
     def get_urls(self):
         urls = super().get_urls()
-        custom_urls =[
-            path('<int:object_id>/workbench/', self.admin_site.admin_view(self.workbench_view), name='content_title_workbench'),
+        custom_urls = [
+            path('<int:object_id>/workbench/', self.admin_site.admin_view(self.workbench_view),
+                 name='content_title_workbench'),
         ]
         return custom_urls + urls
 
@@ -66,9 +74,35 @@ class TitleAdmin(admin.ModelAdmin):
         )
         return TemplateResponse(request, "admin/workbench.html", context)
 
+
 @admin.register(Episode)
 class EpisodeAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'title', 'season_number', 'episode_number')
-    list_filter = ('title',)
-    # Для эпизодов показываем сборки дорожек (Воркбенч)
+    list_display = ('__str__', 'title', 'season_number', 'episode_number', 'workbench_link')
+    list_filter = ('title', 'season_number')
     inlines = [TrackGroupGenericInline]
+
+    # Кнопка в списке серий
+    def workbench_link(self, obj):
+        return format_html('<a class="button" href="{}/workbench/">Open Workbench</a>', obj.pk)
+
+    workbench_link.short_description = 'Workbench'
+
+    # Регистрация URL внутри админки эпизодов
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('<int:object_id>/workbench/', self.admin_site.admin_view(self.workbench_view),
+                 name='content_episode_workbench'),
+        ]
+        return custom_urls + urls
+
+    # View для Воркбенча (используем тот же шаблон, меняя content_type)
+    def workbench_view(self, request, object_id):
+        episode = self.get_object(request, object_id)
+        context = dict(
+            self.admin_site.each_context(request),
+            title=f"Episode: {episode}",
+            object_id=object_id,
+            content_type='episode'  # Важно для сохранения в правильную модель
+        )
+        return TemplateResponse(request, "admin/workbench.html", context)
