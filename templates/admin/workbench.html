@@ -1,0 +1,35 @@
+{% extends "admin/base_site.html" %}
+{% load django_vite %}
+
+{% block title %}Workbench: {{ title.name }} | Just Content Admin{% endblock %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <!-- Подключаем Tailwind и стили Vue -->
+    {% vite_asset 'src/style.css' %}
+{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    {% vite_hmr_client %}
+    {% vite_asset 'src/main.js' %}
+{% endblock %}
+
+{% block content %}
+    <div id="content-main">
+        <div class="module">
+            <h2>Content Workbench: {{ title.name }}</h2>
+            <p>Use this interactive tool to assemble Video and Audio assets into synchronized Track Groups.</p>
+
+            <!-- Vue Mount Point -->
+            <!-- Передаем CSRF токен для API запросов -->
+            <div
+                    id="vue-workbench-mount"
+                    data-object-id="{{ object_id }}"
+                    data-content-type="{{ content_type }}"
+                    data-csrf="{{ csrf_token }}"
+                    class="mt-4"
+            ></div>
+        </div>
+    </div>
+{% endblock %}

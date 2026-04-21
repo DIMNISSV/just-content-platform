@@ -1,5 +1,9 @@
 from django.contrib import admin
 from django.contrib.contenttypes.admin import GenericTabularInline
+from django.template.response import TemplateResponse
+from django.urls import path
+from django.utils.html import format_html
+
 from .models import Genre, Title, Episode, TrackGroup, AdditionalTrack
 
 @admin.register(Genre)
@@ -31,12 +35,36 @@ class EpisodeInline(admin.TabularInline):
 
 @admin.register(Title)
 class TitleAdmin(admin.ModelAdmin):
-    list_display = ('name', 'type', 'release_year')
+    list_display = ('name', 'type', 'release_year', 'workbench_link') # Добавили ссылку
     list_filter = ('type', 'genres')
     search_fields = ('name', 'original_name')
     filter_horizontal = ('genres',)
-    # Для Фильмов показываем сборки дорожек (Воркбенч), для Сериалов - список эпизодов
-    inlines =[TrackGroupGenericInline, EpisodeInline]
+    inlines = [TrackGroupGenericInline, EpisodeInline]
+
+    # Создаем кнопку-ссылку в списке фильмов
+    def workbench_link(self, obj):
+        return format_html('<a class="button" href="{}workbench/">Open Workbench</a>', obj.pk)
+    workbench_link.short_description = 'Workbench'
+    workbench_link.allow_tags = True
+
+    # Регистрируем кастомный URL внутри админки Title
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls =[
+            path('<int:object_id>/workbench/', self.admin_site.admin_view(self.workbench_view), name='content_title_workbench'),
+        ]
+        return custom_urls + urls
+
+    # Кастомная View, которая отрендерит Vue Воркбенч
+    def workbench_view(self, request, object_id):
+        title = self.get_object(request, object_id)
+        context = dict(
+            self.admin_site.each_context(request),
+            title=title,
+            object_id=object_id,
+            content_type='title'
+        )
+        return TemplateResponse(request, "admin/workbench.html", context)
 
 @admin.register(Episode)
 class EpisodeAdmin(admin.ModelAdmin):

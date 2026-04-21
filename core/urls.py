@@ -5,9 +5,10 @@ from django.conf.urls.static import static
 
 from content.views import HomeView
 
-urlpatterns =[
+urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('content.urls')),
+    path('', include('media.urls')),
     path('', HomeView.as_view(), name='home'),
 ]
 

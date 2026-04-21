@@ -1,6 +1,7 @@
 import './style.css';
 import {createApp} from 'vue';
 import VideoPlayer from './components/VideoPlayer.vue';
+import SyncWorkbench from './components/admin/SyncWorkbench.vue'; // Импорт Воркбенча
 
 document.addEventListener('DOMContentLoaded', () => {
     const playerMount = document.getElementById('vue-player-mount');
@@ -10,5 +11,15 @@ document.addEventListener('DOMContentLoaded', () => {
             contentType: playerMount.dataset.contentType
         });
         app.mount('#vue-player-mount');
+    }
+
+    const workbenchMount = document.getElementById('vue-workbench-mount');
+    if (workbenchMount) {
+        const app = createApp(SyncWorkbench, {
+            objectId: workbenchMount.dataset.objectId,
+            contentType: workbenchMount.dataset.contentType,
+            csrfToken: workbenchMount.dataset.csrf
+        });
+        app.mount('#vue-workbench-mount');
     }
 });

@@ -2,11 +2,12 @@ from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.views.generic import ListView, DetailView
 from rest_framework import viewsets, filters, status
-from rest_framework.decorators import api_view, action
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.decorators import api_view, action, permission_classes
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
 from rest_framework.response import Response
 
-from .models import Title, Episode, TrackGroup, TrackGroupRating, TitleRating, WatchHistory
+from media.models import Asset
+from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack
 from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer
 
 
@@ -279,3 +280,50 @@ class WatchView(DetailView):
         # Передаем тип контента для манифеста (title или episode)
         context['content_type'] = 'title'
         return context
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def save_workbench(request, content_type_str, object_id):
+    """
+    Сохраняет собранную в Vue Воркбенче группу дорожек.
+    """
+    if content_type_str.lower() == 'title':
+        ctype = ContentType.objects.get_for_model(Title)
+    elif content_type_str.lower() == 'episode':
+        ctype = ContentType.objects.get_for_model(Episode)
+    else:
+        return Response({"error": "Invalid content type"}, status=status.HTTP_400_BAD_REQUEST)
+
+    data = request.data
+    group_name = data.get('name', 'Custom Version')
+    video_asset_id = data.get('video_asset_id')
+    tracks = data.get('tracks', [])  # [{asset_id, language, offset_ms}]
+
+    try:
+        video_asset = Asset.objects.get(id=video_asset_id, type=Asset.Type.VIDEO)
+    except Asset.DoesNotExist:
+        return Response({"error": "Invalid Video Asset"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 1. Создаем или обновляем базовую группу (TrackGroup)
+    track_group = TrackGroup.objects.create(
+        name=group_name,
+        content_type=ctype,
+        object_id=object_id,
+        video_asset=video_asset
+    )
+
+    # 2. Добавляем аудиодорожки и субтитры
+    for t in tracks:
+        try:
+            asset = Asset.objects.get(id=t['asset_id'])
+            AdditionalTrack.objects.create(
+                track_group=track_group,
+                asset=asset,
+                language=t.get('language', 'Unknown'),
+                offset_ms=t.get('offset_ms', 0)
+            )
+        except Asset.DoesNotExist:
+            continue
+
+    return Response({"status": "success", "track_group_id": track_group.id})
