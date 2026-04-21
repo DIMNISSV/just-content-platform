@@ -1,0 +1,38 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+    <form action="" method="post">
+        {% csrf_token %}
+
+        {% for stream in streams %}
+            <input type="hidden" name="_selected_action" value="{{ stream.pk }}"/>
+        {% endfor %}
+        <input type="hidden" name="action" value="extract_to_assets"/>
+
+        <h2>Select Conversion Presets</h2>
+        <p>Select which quality presets to apply to the chosen streams. Multiple presets will generate multiple Assets
+            for adaptive playback.</p>
+
+        <fieldset class="module aligned" style="margin-top: 20px;">
+            <div class="form-row">
+                <div>
+                    <label style="font-weight: bold; margin-bottom: 10px; display: block;">Available Presets:</label>
+                    {% for preset in presets %}
+                        <label style="display: block; margin-bottom: 8px;">
+                            <input type="checkbox" name="presets" value="{{ preset.id }}" checked>
+                            <strong>{{ preset.name }}</strong> ({{ preset.codec }}, {{ preset.bitrate }})
+                        </label>
+                    {% empty %}
+                        <p style="color: #ba2121;">No presets found. Original stream extraction will be used as
+                            fallback.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </fieldset>
+
+        <div class="submit-row">
+            <input type="submit" name="apply" value="Start Extraction" class="default"/>
+            <a href="#" onclick="window.history.back(); return false;" class="button cancel-link">Cancel</a>
+        </div>
+    </form>
+{% endblock %}

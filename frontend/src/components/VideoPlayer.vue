@@ -7,46 +7,36 @@ const props = defineProps({
   contentType: {type: String, default: 'title'}
 });
 
-// DOM Refs
 const videoRef = ref(null);
 const audioRef = ref(null);
 const wrapperRef = ref(null);
 
-// State
 const isLoading = ref(true);
 const manifest = ref(null);
 const error = ref(null);
 
-// Sources & Grouping
 const groupedSources = ref({});
 const activeGroupId = ref(null);
 const activeVideo = ref(null);
 const activeAudio = ref(null);
 
-// Hls.js instances
 let hlsVideo = null;
 let hlsAudio = null;
 let syncInterval = null;
 
-// --- 1. DATA FETCHING & GROUPING ---
-
 const fetchManifest = async () => {
   isLoading.value = true;
   try {
-    // Фаза 1: Локальный манифест (Мгновенно)
     const response = await fetch(`/api/v1/player/manifest/${props.contentType}/${props.contentId}/`);
     manifest.value = await response.json();
     processSources(manifest.value.sources);
 
-    // Авто-выбор первой локальной версии, чтобы юзер уже мог нажать Play
     const groupKeys = Object.keys(groupedSources.value);
     if (groupKeys.length > 0) {
       selectGroup(groupKeys[0]);
     }
 
-    // Фаза 2: Внешние источники (Фоном)
     fetchExternalSources();
-
   } catch (e) {
     error.value = "Failed to load video manifest.";
   } finally {
@@ -60,10 +50,7 @@ const fetchExternalSources = async () => {
     if (response.ok) {
       const extData = await response.json();
       if (extData.sources && extData.sources.length > 0) {
-        // Добавляем новые источники в существующий список
         processSources(extData.sources);
-
-        // Если до этого ничего не было выбрано, выбираем первый из внешних
         if (!activeGroupId.value) {
           const groupKeys = Object.keys(groupedSources.value);
           if (groupKeys.length > 0) selectGroup(groupKeys[0]);
@@ -71,15 +58,13 @@ const fetchExternalSources = async () => {
       }
     }
   } catch (e) {
-    console.warn("External sources failed to load, but that's okay.");
+    console.warn("External sources warning:", e);
   }
 };
 
 const processSources = (sources) => {
   const groups = {};
-
   sources.forEach(source => {
-    // Treat IFRAME/EXTERNAL as a standalone group
     if (source.type === 'EXTERNAL_PLAYER') {
       groups[source.asset_id] = {
         title: source.provider || 'External Source',
@@ -88,35 +73,31 @@ const processSources = (sources) => {
       };
       return;
     }
-
-    // Handle Internal Video/Audio linked by sync_group_id
     const gid = source.sync_group_id;
     if (!gid) return;
-
     if (!groups[gid]) {
       groups[gid] = {title: source.group_title || 'Default', video: null, audios: []};
     }
-
     if (source.type === 'VIDEO') {
       groups[gid].video = source;
     } else if (source.type === 'AUDIO') {
       groups[gid].audios.push(source);
     }
   });
-
   groupedSources.value = groups;
 };
-
-// --- 2. PLAYER LOGIC & HLS INIT ---
 
 const initHls = (mediaElement, source, hlsInstanceVar) => {
   if (hlsInstanceVar) {
     hlsInstanceVar.destroy();
   }
 
-  if (Hls.isSupported() && source.storage_path.endsWith('.m3u8')) {
+  // Берем active_path, если он передан (для переключения качества), иначе fallback
+  const targetPath = source.active_path || source.storage_path;
+
+  if (Hls.isSupported() && targetPath.endsWith('.m3u8')) {
     const hls = new Hls({enableWorker: true});
-    hls.loadSource(source.storage_path);
+    hls.loadSource(targetPath);
     hls.attachMedia(mediaElement);
     hls.on(Hls.Events.ERROR, function (event, data) {
       if (data.fatal) {
@@ -126,12 +107,10 @@ const initHls = (mediaElement, source, hlsInstanceVar) => {
     });
     return hls;
   } else if (mediaElement.canPlayType('application/vnd.apple.mpegurl')) {
-    // Safari Native HLS
-    mediaElement.src = source.storage_path;
+    mediaElement.src = targetPath;
     return null;
   } else {
-    // MP4 fallback
-    mediaElement.src = source.storage_path;
+    mediaElement.src = targetPath;
     return null;
   }
 };
@@ -141,7 +120,6 @@ const selectGroup = async (groupId) => {
   const group = groupedSources.value[groupId];
 
   activeVideo.value = group.video;
-  // Default to native audio (null) if no external tracks, else select the first one
   activeAudio.value = group.audios.length > 0 ? group.audios[0] : null;
 
   await nextTick();
@@ -153,7 +131,7 @@ const selectGroup = async (groupId) => {
     }
     startSyncEngine();
   } else {
-    stopSyncEngine(); // External iframes don't need sync
+    stopSyncEngine();
   }
 };
 
@@ -175,7 +153,20 @@ const selectAudio = async (audioSource) => {
   if (isPlaying) videoRef.value.play();
 };
 
-// --- 3. SYNCHRONIZATION ENGINE ---
+const changeVideoQuality = async (path) => {
+  if (activeVideo.value.active_path === path) return;
+
+  const currentTime = videoRef.value.currentTime;
+  const isPaused = videoRef.value.paused;
+  activeVideo.value.active_path = path;
+
+  hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo);
+
+  videoRef.value.currentTime = currentTime;
+  if (!isPaused) {
+    videoRef.value.play().catch(e => console.warn(e));
+  }
+};
 
 const performSync = () => {
   if (!videoRef.value || !audioRef.value || !activeAudio.value) return;
@@ -191,7 +182,6 @@ const performSync = () => {
   const offsetSeconds = activeAudio.value.offset_ms / 1000;
   const targetAudioTime = video.currentTime - offsetSeconds;
 
-  // If difference is greater than 0.2 seconds, resync
   const diff = Math.abs(audio.currentTime - targetAudioTime);
   if (diff > 0.2) {
     audio.currentTime = targetAudioTime;
@@ -211,8 +201,6 @@ const stopSyncEngine = () => {
   if (syncInterval) clearInterval(syncInterval);
 };
 
-// --- EVENTS & LIFECYCLE ---
-
 const handleVideoEvents = () => {
   performSync();
 };
@@ -225,45 +213,16 @@ const toggleFullscreen = () => {
   }
 };
 
-let telemetryInterval = null;
-
-const sendTelemetry = async () => {
-  if (!videoRef.value || videoRef.value.paused || !props.contentId) return;
-
-  const payload = {
-    title_id: props.contentType === 'title' ? props.contentId : null,
-    episode_id: props.contentType === 'episode' ? props.contentId : null,
-    progress_ms: Math.floor(videoRef.value.currentTime * 1000),
-    is_completed: (videoRef.value.duration - videoRef.value.currentTime) < 30 // Считаем завершенным за 30 сек до конца
-  };
-
-  try {
-    await fetch('/api/v1/player/telemetry/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': document.querySelector('[id="vue-player-mount"]').dataset.csrf // Передадим через дата-атрибут
-      },
-      body: JSON.stringify(payload)
-    });
-  } catch (e) {
-    console.warn("Telemetry failed");
-  }
-};
-
 onMounted(() => {
   fetchManifest();
-  telemetryInterval = setInterval(sendTelemetry, 10000); // Каждые 10 сек
 });
 
 onBeforeUnmount(() => {
-  clearInterval(telemetryInterval);
   stopSyncEngine();
   if (hlsVideo) hlsVideo.destroy();
   if (hlsAudio) hlsAudio.destroy();
 });
 
-// Computed properties for UI
 const currentGroupAudios = computed(() => {
   return activeGroupId.value ? groupedSources.value[activeGroupId.value].audios : [];
 });
@@ -271,12 +230,10 @@ const currentGroupAudios = computed(() => {
 
 <template>
   <div class="video-player-container" ref="wrapperRef">
-    <!-- Loader -->
     <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-black z-20">
       <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-brand"></div>
     </div>
 
-    <!-- Error State -->
     <div v-else-if="error"
          class="absolute inset-0 flex flex-col items-center justify-center bg-black text-gray-400 z-20">
       <svg class="w-12 h-12 mb-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -286,10 +243,8 @@ const currentGroupAudios = computed(() => {
       <span class="text-lg font-bold">{{ error }}</span>
     </div>
 
-    <!-- Media Elements -->
     <div v-else class="relative w-full h-full bg-black group">
 
-      <!-- Native HTML5 Video -->
       <video
           v-if="activeVideo && activeVideo.type === 'VIDEO'"
           ref="videoRef"
@@ -304,7 +259,6 @@ const currentGroupAudios = computed(() => {
           @waiting="handleVideoEvents"
       ></video>
 
-      <!-- External Iframe Fallback -->
       <iframe
           v-else-if="activeVideo && activeVideo.type === 'EXTERNAL_PLAYER'"
           :src="activeVideo.storage_path"
@@ -313,26 +267,17 @@ const currentGroupAudios = computed(() => {
           allow="autoplay; encrypted-media"
       ></iframe>
 
-      <!-- Native HTML5 Audio (Hidden) -->
-      <audio
-          v-if="activeAudio"
-          ref="audioRef"
-          class="hidden"
-          preload="auto"
-      ></audio>
+      <audio v-if="activeAudio" ref="audioRef" class="hidden" preload="auto"></audio>
 
-      <!-- Custom Top Controls Overlay -->
+      <!-- TOP OVERLAY -->
       <div
           class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex justify-between items-start pointer-events-none">
 
-        <!-- TrackGroup (Version) Selector -->
         <div class="pointer-events-auto flex flex-col gap-2">
           <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Version</label>
           <div class="flex flex-wrap gap-2">
             <button
-                v-for="(group, id) in groupedSources"
-                :key="id"
-                @click="selectGroup(id)"
+                v-for="(group, id) in groupedSources" :key="id" @click="selectGroup(id)"
                 :class="['px-3 py-1 text-sm rounded transition-colors border', activeGroupId === id ? 'bg-brand border-brand text-white' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']"
             >
               {{ group.title }}
@@ -351,30 +296,43 @@ const currentGroupAudios = computed(() => {
         </div>
       </div>
 
-      <!-- Custom Bottom Audio Controls Overlay -->
+      <!-- BOTTOM OVERLAY -->
       <div
-          class="absolute bottom-16 left-0 right-0 px-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
+          class="absolute bottom-16 left-0 right-0 px-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none flex justify-between items-end">
+
+        <!-- Audio selector -->
         <div v-if="currentGroupAudios.length > 0" class="pointer-events-auto flex flex-col gap-2">
           <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Audio Track</label>
           <div class="flex flex-wrap gap-2">
-            <!-- Native Audio (from Video file) -->
             <button
                 @click="selectAudio(null)"
                 :class="['px-3 py-1 text-sm rounded transition-colors border', activeAudio === null ? 'bg-white text-black border-white' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']"
             >
               Original (Native)
             </button>
-            <!-- Additional Linked Tracks -->
             <button
-                v-for="audio in currentGroupAudios"
-                :key="audio.asset_id"
-                @click="selectAudio(audio)"
+                v-for="audio in currentGroupAudios" :key="audio.asset_id" @click="selectAudio(audio)"
                 :class="['px-3 py-1 text-sm rounded transition-colors border', activeAudio?.asset_id === audio.asset_id ? 'bg-white text-black border-white' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']"
             >
               {{ audio.meta_info?.language || 'Dub Track' }}
             </button>
           </div>
         </div>
+
+        <!-- Video Quality Selector -->
+        <div v-if="activeVideo && activeVideo.qualities && activeVideo.qualities.length > 1"
+             class="pointer-events-auto flex flex-col gap-2 items-end ml-auto">
+          <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Quality</label>
+          <div class="flex flex-wrap gap-2 justify-end">
+            <button
+                v-for="q in activeVideo.qualities" :key="q.asset_id" @click="changeVideoQuality(q.storage_path)"
+                :class="['px-3 py-1 text-sm rounded transition-colors border', activeVideo.active_path === q.storage_path ? 'bg-brand text-white border-brand' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']"
+            >
+              {{ q.label }}
+            </button>
+          </div>
+        </div>
+
       </div>
 
     </div>
@@ -392,7 +350,6 @@ const currentGroupAudios = computed(() => {
   overflow: hidden;
 }
 
-/* Customizing scrollbars inside the player if needed */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

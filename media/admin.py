@@ -1,5 +1,4 @@
 from django.contrib import admin
-from django.contrib import messages
 
 from .models import RawMediaFile, MediaStream, Asset
 from .tasks import extract_stream_task
@@ -26,32 +25,64 @@ class MediaStreamAdmin(admin.ModelAdmin):
     list_filter = ('codec_type', 'raw_file')
     actions = ['extract_to_assets']
 
-    @admin.action(description='Extract selected streams to Assets')
+    @admin.action(description='Extract selected streams to Assets (with Presets)')
     def extract_to_assets(self, request, queryset):
         from django.db import transaction
+        from django.shortcuts import render
+        from django.http import HttpResponseRedirect
+        from .models import TranscodingPreset
 
-        def start_tasks(asset_ids):
-            for aid in asset_ids:
-                extract_stream_task.delay(aid)
+        if 'apply' in request.POST:
+            preset_ids = request.POST.getlist('presets')
+            presets = TranscodingPreset.objects.filter(id__in=preset_ids)
 
-        with transaction.atomic():
-            asset_ids = []
-            for stream in queryset:
-                asset = Asset.objects.create(
-                    source_stream=stream,
-                    type=stream.codec_type,
-                    status=Asset.Status.PROCESSING
-                )
-                asset_ids.append(asset.id)
+            def start_tasks(asset_ids):
+                for aid in asset_ids:
+                    extract_stream_task.delay(aid)
 
-            # Отправляем в Celery только после того, как commit завершится
-            transaction.on_commit(lambda: start_tasks(asset_ids))
+            with transaction.atomic():
+                asset_ids = []
+                for stream in queryset:
+                    if not presets:
+                        # Fallback: no presets selected
+                        asset = Asset.objects.create(
+                            source_stream=stream,
+                            type=stream.codec_type,
+                            status=Asset.Status.PROCESSING
+                        )
+                        asset_ids.append(asset.id)
+                    else:
+                        # Filter presets by stream type to avoid processing Audio preset on Video
+                        valid_presets = [p for p in presets if p.type == stream.codec_type]
+                        if not valid_presets:
+                            asset = Asset.objects.create(
+                                source_stream=stream,
+                                type=stream.codec_type,
+                                status=Asset.Status.PROCESSING
+                            )
+                            asset_ids.append(asset.id)
 
-        self.message_user(
-            request,
-            f"Started extraction for {len(asset_ids)} streams.",
-            messages.SUCCESS
-        )
+                        for preset in valid_presets:
+                            asset = Asset.objects.create(
+                                source_stream=stream,
+                                type=stream.codec_type,
+                                status=Asset.Status.PROCESSING,
+                                preset=preset,
+                                quality_label=preset.name
+                            )
+                            asset_ids.append(asset.id)
+
+                transaction.on_commit(lambda: start_tasks(asset_ids))
+
+            self.message_user(request, f"Extraction tasks started for {len(asset_ids)} assets.")
+            return HttpResponseRedirect(request.get_full_path())
+
+        context = {
+            'streams': queryset,
+            'presets': TranscodingPreset.objects.all(),
+            'title': 'Select Extraction Presets'
+        }
+        return render(request, 'admin/media/select_presets.html', context)
 
 
 @admin.register(Asset)

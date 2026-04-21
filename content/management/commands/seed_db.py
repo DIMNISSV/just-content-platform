@@ -1,4 +1,3 @@
-from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.core.management.base import BaseCommand
@@ -130,19 +129,26 @@ class Command(BaseCommand):
         )
 
         presets_data = [
-            # Video
             {'name': '4K AV1 5M', 'type': 'VIDEO', 'codec': 'libaom-av1', 'bitrate': '5M', 'width': 3840},
             {'name': 'FHD x264 4M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '4M', 'width': 1920},
             {'name': 'HD x264 2M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '2M', 'width': 1280},
             {'name': 'SD x264 1M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '1M', 'width': 854},
-            # Audio
             {'name': 'HQ libopus 224k', 'type': 'AUDIO', 'codec': 'libopus', 'bitrate': '224k'},
             {'name': 'SQ aac 128k', 'type': 'AUDIO', 'codec': 'aac', 'bitrate': '128k'},
         ]
 
+        preset_objs = {}
         for p_info in presets_data:
-            TranscodingPreset.objects.update_or_create(name=p_info['name'], defaults=p_info)
+            p, _ = TranscodingPreset.objects.update_or_create(name=p_info['name'], defaults=p_info)
+            preset_objs[p.name] = p
 
-        self.stdout.write(self.style.SUCCESS('Presets created.'))
+        # Обновляем тестовые ассеты, чтобы увидеть качество в плеере
+        video_asset.preset = preset_objs['FHD x264 4M']
+        video_asset.quality_label = 'FHD x264 4M'
+        video_asset.save()
+
+        audio_asset.preset = preset_objs['SQ aac 128k']
+        audio_asset.quality_label = 'SQ aac 128k'
+        audio_asset.save()
 
         self.stdout.write(self.style.SUCCESS('Successfully seeded database with test data!'))

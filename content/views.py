@@ -91,30 +91,72 @@ def player_manifest(request, content_type_str, object_id):
     track_groups = TrackGroup.objects.filter(
         content_type=ctype,
         object_id=object_id
-    ).prefetch_related('video_asset', 'additional_tracks__asset')
+    ).prefetch_related('video_asset__source_stream', 'additional_tracks__asset__source_stream')
 
     sources = []
     for tg in track_groups:
+        # 1. VIDEO QUALITIES
         if tg.video_asset and tg.video_asset.status == 'READY':
-            sources.append({
-                "asset_id": str(tg.video_asset.id),
-                "type": tg.video_asset.type,
-                "storage_path": f"{settings.MEDIA_URL}{tg.video_asset.storage_path}",
-                "sync_group_id": str(tg.id),
-                "group_title": tg.name,
-                "offset_ms": 0,
-            })
-        for extra in tg.additional_tracks.all():
-            if extra.asset and extra.asset.status == 'READY':
+            # Если есть привязка к стриму, ищем все доступные качества этого же стрима
+            if tg.video_asset.source_stream:
+                v_assets = Asset.objects.filter(
+                    source_stream=tg.video_asset.source_stream,
+                    type='VIDEO',
+                    status='READY'
+                ).order_by('-preset__width')  # Высокое качество сверху
+            else:
+                v_assets = [tg.video_asset]
+
+            qualities = []
+            for a in v_assets:
+                qualities.append({
+                    "asset_id": str(a.id),
+                    "label": a.quality_label or "Original",
+                    "storage_path": f"{settings.MEDIA_URL}{a.storage_path}"
+                })
+
+            if qualities:
                 sources.append({
-                    "asset_id": str(extra.asset.id),
-                    "type": extra.asset.type,
-                    "storage_path": f"{settings.MEDIA_URL}{extra.asset.storage_path}",
+                    "id": f"video_{tg.id}",
+                    "type": "VIDEO",
                     "sync_group_id": str(tg.id),
                     "group_title": tg.name,
-                    "offset_ms": extra.offset_ms,
-                    "meta_info": {"language": extra.language}
+                    "offset_ms": 0,
+                    "qualities": qualities,
+                    "active_path": qualities[0]["storage_path"]
                 })
+
+        # 2. AUDIO QUALITIES
+        for extra in tg.additional_tracks.all():
+            if extra.asset and extra.asset.status == 'READY':
+                if extra.asset.source_stream:
+                    a_assets = Asset.objects.filter(
+                        source_stream=extra.asset.source_stream,
+                        type=extra.asset.type,
+                        status='READY'
+                    )
+                else:
+                    a_assets = [extra.asset]
+
+                qualities = []
+                for a in a_assets:
+                    qualities.append({
+                        "asset_id": str(a.id),
+                        "label": a.quality_label or "Original",
+                        "storage_path": f"{settings.MEDIA_URL}{a.storage_path}"
+                    })
+
+                if qualities:
+                    sources.append({
+                        "id": f"extra_{extra.id}",
+                        "type": extra.asset.type,
+                        "sync_group_id": str(tg.id),
+                        "group_title": tg.name,
+                        "offset_ms": extra.offset_ms,
+                        "meta_info": {"language": extra.language},
+                        "qualities": qualities,
+                        "active_path": qualities[0]["storage_path"]
+                    })
 
     return Response({
         "content_id": str(object_id),
