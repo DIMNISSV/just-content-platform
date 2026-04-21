@@ -18,6 +18,7 @@ django-vite = "^3.1.0"
 gunicorn = "^25.3.0"
 unicorn = "^2.1.4"
 uvicorn = "^0.44.0"
+django-cors-headers = "^4.9.0"
 
 
 [build-system]

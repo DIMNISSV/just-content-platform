@@ -40,16 +40,20 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'corsheaders',
+    'django_vite',
     'django.contrib.staticfiles',
     'rest_framework',
     'users.apps.UsersConfig',
     'media.apps.MediaConfig',
     'content.apps.ContentConfig',
+    'aggregator.apps.AggregatorConfig',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -81,7 +85,11 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': env.db('DATABASE_URL', default='postgres://postgres:postgres@localhost:5432/just_content_platform')
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    },
+    'psql': env.db('DATABASE_URL', default='postgres://postgres:postgres@localhost:5432/just_content_platform')
 }
 
 # Password validation
@@ -113,12 +121,16 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# Настройка django-vite
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
 DJANGO_VITE = {
     "default": {
         "dev_mode": DEBUG,
+        "dev_server_host": "127.0.0.1",
         "dev_server_port": 5173,
-        "static_url_prefix": "dist",
     }
 }
 

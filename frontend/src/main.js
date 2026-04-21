@@ -1,3 +1,7 @@
+import './style.css';
+import { createApp } from 'vue';
+
+console.log("Just Content Frontend Loaded");
 // Здесь мы будем импортировать наши Vue-компоненты
 // import VideoPlayer from './components/VideoPlayer.vue';
 

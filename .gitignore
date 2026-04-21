@@ -22,3 +22,5 @@ media_storage/
 *.ipr
 
 node_modules/
+
+staticfiles/
