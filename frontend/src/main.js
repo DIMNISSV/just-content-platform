@@ -1,21 +1,14 @@
 import './style.css';
-import { createApp } from 'vue';
-
-console.log("Just Content Frontend Loaded");
-// Здесь мы будем импортировать наши Vue-компоненты
-// import VideoPlayer from './components/VideoPlayer.vue';
+import {createApp} from 'vue';
+import VideoPlayer from './components/VideoPlayer.vue';
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Архитектура "Островков": ищем контейнеры с атрибутом data-vue-component
-    // и монтируем в них соответствующие Vue-компоненты.
-
-    /* Пример на будущее (Итерация 10):
-    const playerContainer = document.getElementById('vue-player-mount');
-    if (playerContainer) {
+    const playerMount = document.getElementById('vue-player-mount');
+    if (playerMount) {
         const app = createApp(VideoPlayer, {
-            contentId: playerContainer.dataset.contentId
+            contentId: playerMount.dataset.contentId,
+            contentType: playerMount.dataset.contentType
         });
         app.mount('#vue-player-mount');
     }
-    */
 });

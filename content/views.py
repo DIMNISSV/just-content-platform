@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
-from django.views.generic import ListView
+from django.views.generic import ListView, DetailView
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import api_view, action
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
@@ -267,3 +267,15 @@ class HomeView(ListView):
     def get_queryset(self):
         # Получаем последние добавленные фильмы с сортировкой по рейтингу
         return Title.objects.all().order_by('-rating_score', '-created_at')[:24]
+
+
+class WatchView(DetailView):
+    model = Title
+    template_name = 'content/watch.html'
+    context_object_name = 'title'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Передаем тип контента для манифеста (title или episode)
+        context['content_type'] = 'title'
+        return context

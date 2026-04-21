@@ -8,7 +8,7 @@
 
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
             {% for title in titles %}
-                <a href="#" class="group block">
+                <a href="{% url 'watch' title.id %}" class="group block">
                     <div class="aspect-[2/3] bg-gray-900 rounded-lg overflow-hidden mb-3 relative">
                         {% if title.poster %}
                             <img src="{{ title.poster.url }}" alt="{{ title.name }}"
