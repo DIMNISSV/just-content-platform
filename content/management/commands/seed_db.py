@@ -129,7 +129,7 @@ class Command(BaseCommand):
         )
 
         presets_data = [
-            {'name': '4K AV1 5M', 'type': 'VIDEO', 'codec': 'libaom-av1', 'bitrate': '5M', 'width': 3840},
+            {'name': '4K AV1 5M', 'type': 'VIDEO', 'codec': 'libsvtav1', 'bitrate': '5M', 'width': 3840},
             {'name': 'FHD x264 4M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '4M', 'width': 1920},
             {'name': 'HD x264 2M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '2M', 'width': 1280},
             {'name': 'SD x264 1M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '1M', 'width': 854},
