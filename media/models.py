@@ -57,10 +57,13 @@ class TranscodingPreset(models.Model):
 
     # FFmpeg settings
     codec = models.CharField(max_length=50, help_text="libx264, libaom-av1, libopus, aac...")
+    video_preset = models.CharField(max_length=50, blank=True,
+                                    help_text="veryfast, fast, medium... (оставьте пустым для AV1)")
+    container = models.CharField(max_length=20, default='m3u8', help_text="m3u8, mp4, m4a, webm, ogg...")
+
     bitrate = models.CharField(max_length=20, help_text="5M, 2M, 128k...")
     width = models.IntegerField(null=True, blank=True, help_text="Для видео (напр. 3840)")
 
-    # Custom flags
     custom_pre_args = models.TextField(blank=True, help_text="Аргументы ДО -i (input)")
     custom_post_args = models.TextField(blank=True, help_text="Аргументы ПОСЛЕ кодеков")
 

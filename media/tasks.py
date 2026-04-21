@@ -114,62 +114,71 @@ def extract_stream_task(asset_id):
     total_micros = int(total_duration * 1000000)
 
     # 2. Формирование команды FFmpeg
-    # База: запуск, перезапись, вывод прогресса в stdout
     cmd = ['ffmpeg', '-y']
 
-    # Добавляем кастомные аргументы ДО входного файла (напр. аппаратное ускорение)
     if preset and preset.custom_pre_args:
         cmd.extend(shlex.split(preset.custom_pre_args))
 
-    # Входной файл и маппинг конкретной дорожки
     cmd.extend(['-progress', '-', '-i', input_path, '-map', f'0:{stream.index}'])
 
+    # Определяем контейнер. Если не задан, fallback: HLS для видео, M4A для аудио
+    container = preset.container if (preset and preset.container) else (
+        'm3u8' if stream.codec_type == 'VIDEO' else 'm4a')
     rel_path = ""
     out_file = ""
 
     if stream.codec_type == MediaStream.StreamType.VIDEO:
-        out_file = os.path.join(base_out_dir, 'master.m3u8')
-        rel_path = f'assets/{asset.id}/master.m3u8'
+        out_file = os.path.join(base_out_dir, f'master.{container}')
+        rel_path = f'assets/{asset.id}/master.{container}'
 
-        # Настройки видео из пресета
-        v_codec = preset.codec if (preset and preset.codec) else 'libx264'
-        v_bitrate = preset.bitrate if (preset and preset.bitrate) else '2M'
+        v_codec = preset.codec if preset and preset.codec else 'libx264'
+        v_bitrate = preset.bitrate if preset and preset.bitrate else '2M'
 
         cmd.extend(['-c:v', v_codec, '-b:v', v_bitrate])
 
-        # Масштабирование, если указана ширина (напр. для 4K/FHD/SD)
         if preset and preset.width:
             cmd.extend(['-vf', f'scale={preset.width}:-2'])
 
-        # Обязательные параметры для HLS (стриминг)
-        cmd.extend([
-            '-preset', 'veryfast',
-            '-hls_time', '10',
-            '-hls_playlist_type', 'vod',
-            '-hls_segment_filename', os.path.join(base_out_dir, 'segment_%03d.ts')
-        ])
+        # Настройка -preset (только если указана, т.к. AV1 использует -cpu-used)
+        if preset and preset.video_preset:
+            cmd.extend(['-preset', preset.video_preset])
+        elif not preset:
+            cmd.extend(['-preset', 'veryfast'])  # fallback для генерации "на лету" без пресета
+
+        # Если контейнер HLS (m3u8), настраиваем сегменты
+        if container == 'm3u8':
+            cmd.extend(['-hls_time', '10', '-hls_playlist_type', 'vod'])
+
+            # Проверяем, не переопределил ли юзер имена сегментов в custom_post_args
+            if not (preset and preset.custom_post_args and '-hls_segment_filename' in preset.custom_post_args):
+                # Для AV1 или HEVC используем fmp4 контейнер для сегментов (Apple рекомендует fmp4 для новых кодеков)
+                if v_codec in ['libaom-av1', 'libx265', 'hevc']:
+                    cmd.extend([
+                        '-hls_segment_type', 'fmp4',
+                        '-hls_segment_filename', os.path.join(base_out_dir, 'segment_%03d.m4s')
+                    ])
+                else:
+                    cmd.extend([
+                        '-hls_segment_filename', os.path.join(base_out_dir, 'segment_%03d.ts')
+                    ])
 
     elif stream.codec_type == MediaStream.StreamType.AUDIO:
-        out_file = os.path.join(base_out_dir, 'audio.m4a')
-        rel_path = f'assets/{asset.id}/audio.m4a'
+        out_file = os.path.join(base_out_dir, f'audio.{container}')
+        rel_path = f'assets/{asset.id}/audio.{container}'
 
-        # Настройки аудио из пресета
-        a_codec = preset.codec if (preset and preset.codec) else 'aac'
-        a_bitrate = preset.bitrate if (preset and preset.bitrate) else '128k'
+        a_codec = preset.codec if preset and preset.codec else 'aac'
+        a_bitrate = preset.bitrate if preset and preset.bitrate else '128k'
 
         cmd.extend(['-c:a', a_codec, '-b:a', a_bitrate])
 
     elif stream.codec_type == MediaStream.StreamType.SUBTITLE:
         out_file = os.path.join(base_out_dir, 'sub.vtt')
         rel_path = f'assets/{asset.id}/sub.vtt'
-        # Субтитры обычно просто конвертируем в webvtt
         cmd.extend(['-c:s', 'webvtt'])
 
-    # Добавляем кастомные аргументы ПОСЛЕ настроек кодеков
     if preset and preset.custom_post_args:
         cmd.extend(shlex.split(preset.custom_post_args))
 
-    # Финальный путь
     cmd.append(out_file)
 
     logger.info(f"Executing FFmpeg command: {' '.join(cmd)}")

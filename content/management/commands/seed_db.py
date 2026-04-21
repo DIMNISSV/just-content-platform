@@ -129,14 +129,19 @@ class Command(BaseCommand):
         )
 
         presets_data = [
-            {'name': '4K AV1 5M', 'type': 'VIDEO', 'codec': 'libsvtav1', 'bitrate': '5M', 'width': 3840},
-            {'name': 'FHD x264 4M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '4M', 'width': 1920},
-            {'name': 'HD x264 2M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '2M', 'width': 1280},
-            {'name': 'SD x264 1M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '1M', 'width': 854},
-            {'name': 'HQ libopus 224k', 'type': 'AUDIO', 'codec': 'libopus', 'bitrate': '224k'},
-            {'name': 'SQ aac 128k', 'type': 'AUDIO', 'codec': 'aac', 'bitrate': '128k'},
+            # Video
+            {'name': '4K AV1 5M', 'type': 'VIDEO', 'codec': 'libsvtav1', 'bitrate': '5M', 'width': 3840,
+             'container': 'm3u8', 'video_preset': '6'},
+            {'name': 'FHD x264 4M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '4M', 'width': 1920,
+             'container': 'm3u8', 'video_preset': 'medium'},
+            {'name': 'HD x264 2M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '2M', 'width': 1280,
+             'container': 'm3u8', 'video_preset': 'fast'},
+            {'name': 'SD x264 1M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '1M', 'width': 854,
+             'container': 'm3u8', 'video_preset': 'veryfast'},
+            # Audio
+            {'name': 'HQ libopus 224k', 'type': 'AUDIO', 'codec': 'libopus', 'bitrate': '224k', 'container': 'opus'},
+            {'name': 'SQ aac 128k', 'type': 'AUDIO', 'codec': 'aac', 'bitrate': '128k', 'container': 'm4a'},
         ]
-
         preset_objs = {}
         for p_info in presets_data:
             p, _ = TranscodingPreset.objects.update_or_create(name=p_info['name'], defaults=p_info)
