@@ -79,6 +79,7 @@ def player_manifest(request, content_type_str, object_id):
     Эндпоинт генерации манифеста для VideoPlayer.vue.
     content_type_str может быть 'title' (для фильмов) или 'episode' (для сериалов).
     Возвращает плоский массив `sources` с видео и привязанными дорожками.
+    Отдает только локальные TrackGroups.
     """
     if content_type_str.lower() == 'title':
         ctype = ContentType.objects.get_for_model(Title)
@@ -87,19 +88,12 @@ def player_manifest(request, content_type_str, object_id):
     else:
         return Response({"error": "invalid content type"}, status=400)
 
-    try:
-        content_obj = ctype.get_object_for_this_type(id=object_id)
-    except Exception:
-        return Response({"error": "Content not found"}, status=404)
-
-    # 1. Собираем локальные источники
     track_groups = TrackGroup.objects.filter(
         content_type=ctype,
         object_id=object_id
     ).prefetch_related('video_asset', 'additional_tracks__asset')
 
     sources = []
-
     for tg in track_groups:
         if tg.video_asset and tg.video_asset.status == 'READY':
             sources.append({
@@ -110,7 +104,6 @@ def player_manifest(request, content_type_str, object_id):
                 "group_title": tg.name,
                 "offset_ms": 0,
             })
-
         for extra in tg.additional_tracks.all():
             if extra.asset and extra.asset.status == 'READY':
                 sources.append({
@@ -122,26 +115,6 @@ def player_manifest(request, content_type_str, object_id):
                     "offset_ms": extra.offset_ms,
                     "meta_info": {"language": extra.language}
                 })
-
-    # 2. Собираем внешние источники (Агрегатор)
-    from aggregator.services import get_external_sources
-
-    external_ids = {}
-    if content_type_str.lower() == 'episode':
-        if content_obj.title.imdb_id:
-            external_ids['imdb'] = content_obj.title.imdb_id
-        if content_obj.title.tmdb_id:
-            external_ids['tmdb'] = content_obj.title.tmdb_id
-        external_ids['season'] = content_obj.season_number
-        external_ids['episode'] = content_obj.episode_number
-    else:
-        if content_obj.imdb_id:
-            external_ids['imdb'] = content_obj.imdb_id
-        if content_obj.tmdb_id:
-            external_ids['tmdb'] = content_obj.tmdb_id
-
-    external_sources = get_external_sources(external_ids)
-    sources.extend(external_sources)
 
     return Response({
         "content_id": str(object_id),
@@ -337,3 +310,38 @@ class EpisodeWatchView(DetailView):
         context['content_type'] = 'episode'
         context['player_id'] = self.object.id  # ID Эпизода
         return context
+
+
+@api_view(['GET'])
+def player_external_sources(request, content_type_str, object_id):
+    """
+    Опрашивает внешние плагины для манифеста.
+    """
+    from aggregator.services import get_external_sources
+
+    if content_type_str.lower() == 'title':
+        model_class = Title
+    elif content_type_str.lower() == 'episode':
+        model_class = Episode
+    else:
+        return Response({"error": "invalid type"}, status=400)
+
+    try:
+        content_obj = model_class.objects.get(id=object_id)
+    except model_class.DoesNotExist:
+        return Response({"error": "not found"}, status=404)
+
+    external_ids = {}
+    if content_type_str.lower() == 'episode':
+        if content_obj.title.imdb_id: external_ids['imdb'] = content_obj.title.imdb_id
+        if content_obj.title.tmdb_id: external_ids['tmdb'] = content_obj.title.tmdb_id
+        external_ids['season'] = content_obj.season_number
+        external_ids['episode'] = content_obj.episode_number
+    else:
+        if content_obj.imdb_id: external_ids['imdb'] = content_obj.imdb_id
+        if content_obj.tmdb_id: external_ids['tmdb'] = content_obj.tmdb_id
+
+    # Этот вызов может длиться несколько секунд
+    external_sources = get_external_sources(external_ids)
+
+    return Response({"sources": external_sources})

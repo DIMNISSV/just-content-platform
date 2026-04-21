@@ -33,24 +33,45 @@ let syncInterval = null;
 const fetchManifest = async () => {
   isLoading.value = true;
   try {
+    // Фаза 1: Локальный манифест (Мгновенно)
     const response = await fetch(`/api/v1/player/manifest/${props.contentType}/${props.contentId}/`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
     manifest.value = await response.json();
     processSources(manifest.value.sources);
 
-    // Auto-select first group
+    // Авто-выбор первой локальной версии, чтобы юзер уже мог нажать Play
     const groupKeys = Object.keys(groupedSources.value);
     if (groupKeys.length > 0) {
       selectGroup(groupKeys[0]);
-    } else {
-      error.value = "No playback sources found.";
     }
+
+    // Фаза 2: Внешние источники (Фоном)
+    fetchExternalSources();
+
   } catch (e) {
-    console.error("Failed to load manifest", e);
     error.value = "Failed to load video manifest.";
   } finally {
     isLoading.value = false;
+  }
+};
+
+const fetchExternalSources = async () => {
+  try {
+    const response = await fetch(`/api/v1/player/manifest/external/${props.contentType}/${props.contentId}/`);
+    if (response.ok) {
+      const extData = await response.json();
+      if (extData.sources && extData.sources.length > 0) {
+        // Добавляем новые источники в существующий список
+        processSources(extData.sources);
+
+        // Если до этого ничего не было выбрано, выбираем первый из внешних
+        if (!activeGroupId.value) {
+          const groupKeys = Object.keys(groupedSources.value);
+          if (groupKeys.length > 0) selectGroup(groupKeys[0]);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("External sources failed to load, but that's okay.");
   }
 };
 
