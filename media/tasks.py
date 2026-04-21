@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import time
 
@@ -84,84 +85,126 @@ TIME_RE = re.compile(r'out_time_ms=(\d+)')
 @shared_task
 def extract_stream_task(asset_id):
     """
-    Extracts a specific stream from RawMediaFile and transcodes it
-    into a web-friendly format based on its type.
+    Выполняет экстракцию и транскодирование дорожки на основе выбранного пресета.
+    Поддерживает динамические настройки качества и кастомные флаги FFmpeg.
     """
-    logger.info(f"Starting extraction for Asset: {asset_id}")
+    logger.info(f"--- Starting extraction for Asset: {asset_id} ---")
+
     try:
-        asset = Asset.objects.select_related('source_stream__raw_file').get(id=asset_id)
+        # Загружаем ассет со всеми связанными данными для оптимизации
+        asset = Asset.objects.select_related('source_stream__raw_file', 'preset').get(id=asset_id)
         stream = asset.source_stream
         raw_file = stream.raw_file
+        preset = asset.preset
     except Asset.DoesNotExist:
-        logger.error(f"Asset {asset_id} not found")
+        logger.error(f"Asset {asset_id} not found in database.")
         return
 
-    # Получаем общую длительность файла из метаданных (нужна для % прогресса)
-    total_duration = float(raw_file.metadata.get('format', {}).get('duration', 0))
-    total_ms = int(total_duration * 1000000)  # FFmpeg progress работает в микросекундах
-
+    # 1. Подготовка путей
     base_out_dir = os.path.join(settings.MEDIA_ROOT, 'assets', str(asset.id))
     os.makedirs(base_out_dir, exist_ok=True)
-
     input_path = raw_file.file.path
-    stream_index = stream.index
-    codec_type = stream.codec_type
 
-    # Базовые аргументы
-    cmd = ['ffmpeg', '-y', '-progress', '-', '-i', input_path, '-map', f'0:{stream_index}']
+    # Получаем длительность для расчета прогресса
+    try:
+        total_duration = float(raw_file.metadata.get('format', {}).get('duration', 0))
+    except (TypeError, ValueError):
+        total_duration = 0
 
-    if codec_type == MediaStream.StreamType.VIDEO:
+    total_micros = int(total_duration * 1000000)
+
+    # 2. Формирование команды FFmpeg
+    # База: запуск, перезапись, вывод прогресса в stdout
+    cmd = ['ffmpeg', '-y']
+
+    # Добавляем кастомные аргументы ДО входного файла (напр. аппаратное ускорение)
+    if preset and preset.custom_pre_args:
+        cmd.extend(shlex.split(preset.custom_pre_args))
+
+    # Входной файл и маппинг конкретной дорожки
+    cmd.extend(['-progress', '-', '-i', input_path, '-map', f'0:{stream.index}'])
+
+    rel_path = ""
+    out_file = ""
+
+    if stream.codec_type == MediaStream.StreamType.VIDEO:
         out_file = os.path.join(base_out_dir, 'master.m3u8')
         rel_path = f'assets/{asset.id}/master.m3u8'
-        cmd += [
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-            '-hls_time', '10', '-hls_playlist_type', 'vod',
-            '-hls_segment_filename', os.path.join(base_out_dir, 'segment_%03d.ts'),
-            out_file
-        ]
-    elif codec_type == MediaStream.StreamType.AUDIO:
+
+        # Настройки видео из пресета
+        v_codec = preset.codec if (preset and preset.codec) else 'libx264'
+        v_bitrate = preset.bitrate if (preset and preset.bitrate) else '2M'
+
+        cmd.extend(['-c:v', v_codec, '-b:v', v_bitrate])
+
+        # Масштабирование, если указана ширина (напр. для 4K/FHD/SD)
+        if preset and preset.width:
+            cmd.extend(['-vf', f'scale={preset.width}:-2'])
+
+        # Обязательные параметры для HLS (стриминг)
+        cmd.extend([
+            '-preset', 'veryfast',
+            '-hls_time', '10',
+            '-hls_playlist_type', 'vod',
+            '-hls_segment_filename', os.path.join(base_out_dir, 'segment_%03d.ts')
+        ])
+
+    elif stream.codec_type == MediaStream.StreamType.AUDIO:
         out_file = os.path.join(base_out_dir, 'audio.m4a')
         rel_path = f'assets/{asset.id}/audio.m4a'
-        cmd += ['-c:a', 'aac', '-b:a', '128k', out_file]
-    else:
-        # Для субтитров прогресс не критичен, они извлекаются мгновенно
-        subprocess.run(
-            ['ffmpeg', '-y', '-i', input_path, '-map', f'0:{stream_index}', os.path.join(base_out_dir, 'sub.vtt')],
-            check=True)
-        asset.status = Asset.Status.READY
-        asset.progress = 100
-        asset.storage_path = f'assets/{asset.id}/sub.vtt'
-        asset.save()
-        return
 
-    logger.info(f"Executing FFmpeg with real-time progress tracking...")
+        # Настройки аудио из пресета
+        a_codec = preset.codec if (preset and preset.codec) else 'aac'
+        a_bitrate = preset.bitrate if (preset and preset.bitrate) else '128k'
 
-    # Запускаем Popen без PIPE для stderr (чтобы не было deadlock),
-    # читаем только stdout куда идет -progress
+        cmd.extend(['-c:a', a_codec, '-b:a', a_bitrate])
+
+    elif stream.codec_type == MediaStream.StreamType.SUBTITLE:
+        out_file = os.path.join(base_out_dir, 'sub.vtt')
+        rel_path = f'assets/{asset.id}/sub.vtt'
+        # Субтитры обычно просто конвертируем в webvtt
+        cmd.extend(['-c:s', 'webvtt'])
+
+    # Добавляем кастомные аргументы ПОСЛЕ настроек кодеков
+    if preset and preset.custom_post_args:
+        cmd.extend(shlex.split(preset.custom_post_args))
+
+    # Финальный путь
+    cmd.append(out_file)
+
+    logger.info(f"Executing FFmpeg command: {' '.join(cmd)}")
+
+    # 3. Запуск процесса с отслеживанием прогресса
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,  # Сливаем stderr в stdout для логов
+        stderr=subprocess.STDOUT,  # Объединяем лог ошибок с прогрессом
         universal_newlines=True,
-        encoding='utf-8'
+        encoding='utf-8',
+        errors='replace'
     )
 
-    last_update_time = time.time()
+    last_db_update = time.time()
 
     try:
+        # Построчное чтение вывода FFmpeg
         for line in process.stdout:
-            # Ищем время текущего кадра в микросекундах
-            match = TIME_RE.search(line)
-            if match and total_ms > 0:
-                current_ms = int(match.group(1))
-                percent = min(int((current_ms / total_ms) * 100), 99)
+            # Логируем прогресс в Celery (опционально, забивает логи)
+            # logger.debug(line.strip())
 
-                # Обновляем БД не слишком часто (раз в 2 сек), чтобы не спамить
-                if percent > asset.progress and (time.time() - last_update_time > 2):
+            # Ищем out_time_ms для расчета процентов
+            match = TIME_RE.search(line)
+            if match and total_micros > 0:
+                current_micros = int(match.group(1))
+                percent = int((current_micros / total_micros) * 100)
+                percent = min(max(percent, 0), 99)  # Не показываем 100% пока файл не закрыт
+
+                # Обновляем БД не чаще чем раз в 2 секунды
+                if percent > asset.progress and (time.time() - last_db_update > 2):
                     asset.progress = percent
                     asset.save(update_fields=['progress'])
-                    last_update_time = time.time()
-                    logger.info(f"Asset {asset_id} progress: {percent}%")
+                    last_db_update = time.time()
+                    logger.info(f"Asset {asset_id} Progress: {percent}%")
 
         process.wait()
 
@@ -170,14 +213,17 @@ def extract_stream_task(asset_id):
             asset.status = Asset.Status.READY
             asset.progress = 100
             asset.save()
-            logger.info(f"Asset {asset_id} is READY")
+            logger.info(f"SUCCESS: Asset {asset_id} is READY at {rel_path}")
         else:
-            raise subprocess.CalledProcessError(process.returncode, cmd)
+            logger.error(f"FFmpeg process exited with code {process.returncode}")
+            asset.status = Asset.Status.ERROR
+            asset.save(update_fields=['status'])
 
     except Exception as e:
-        logger.error(f"Extraction failed: {str(e)}")
+        logger.error(f"Extraction CRITICAL FAILURE: {str(e)}")
         asset.status = Asset.Status.ERROR
         asset.save(update_fields=['status'])
-    finally:
         if process.poll() is None:
             process.kill()
+
+    return f"Done: {asset.status}"

@@ -1,12 +1,14 @@
-import uuid
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
-from content.models import Genre, Title, Episode, TrackGroup, AdditionalTrack
-from media.models import RawMediaFile, MediaStream, Asset
+from django.core.management.base import BaseCommand
+
 from aggregator.models import PluginProvider
+from content.models import Genre, Title, Episode, TrackGroup, AdditionalTrack
+from media.models import RawMediaFile, Asset, TranscodingPreset
 
 User = get_user_model()
+
 
 class Command(BaseCommand):
     help = 'Seeds the database with initial test data without duplicates'
@@ -55,7 +57,7 @@ class Command(BaseCommand):
                 'votes_count': 150
             }
         )
-        movie.genres.set(genres[:2]) # Sci-Fi, Drama
+        movie.genres.set(genres[:2])  # Sci-Fi, Drama
 
         # 4. Create a Series
         series, _ = Title.objects.update_or_create(
@@ -69,7 +71,7 @@ class Command(BaseCommand):
                 'votes_count': 90
             }
         )
-        series.genres.set(genres[2:4]) # Action, Comedy
+        series.genres.set(genres[2:4])  # Action, Comedy
 
         # Create Episodes for S01
         for i in range(1, 4):
@@ -126,5 +128,21 @@ class Command(BaseCommand):
                 'is_active': True
             }
         )
+
+        presets_data = [
+            # Video
+            {'name': '4K AV1 5M', 'type': 'VIDEO', 'codec': 'libaom-av1', 'bitrate': '5M', 'width': 3840},
+            {'name': 'FHD x264 4M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '4M', 'width': 1920},
+            {'name': 'HD x264 2M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '2M', 'width': 1280},
+            {'name': 'SD x264 1M', 'type': 'VIDEO', 'codec': 'libx264', 'bitrate': '1M', 'width': 854},
+            # Audio
+            {'name': 'HQ libopus 224k', 'type': 'AUDIO', 'codec': 'libopus', 'bitrate': '224k'},
+            {'name': 'SQ aac 128k', 'type': 'AUDIO', 'codec': 'aac', 'bitrate': '128k'},
+        ]
+
+        for p_info in presets_data:
+            TranscodingPreset.objects.update_or_create(name=p_info['name'], defaults=p_info)
+
+        self.stdout.write(self.style.SUCCESS('Presets created.'))
 
         self.stdout.write(self.style.SUCCESS('Successfully seeded database with test data!'))

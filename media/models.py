@@ -66,8 +66,31 @@ class Asset(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PROCESSING)
     progress = models.IntegerField(default=0, help_text="Progress in percent")
     storage_path = models.CharField(max_length=512, blank=True)
+    preset = models.ForeignKey(TranscodingPreset, on_delete=models.SET_NULL, null=True, blank=True)
+    quality_label = models.CharField(max_length=50, blank=True, help_text="Копируется из пресета для плеера")
 
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"Asset {self.id} [{self.type}] - {self.status}"
+
+
+class TranscodingPreset(models.Model):
+    class Type(models.TextChoices):
+        VIDEO = 'VIDEO', 'Video'
+        AUDIO = 'AUDIO', 'Audio'
+
+    name = models.CharField(max_length=100, unique=True, help_text="Напр: 4K AV1 5M")
+    type = models.CharField(max_length=10, choices=Type.choices)
+
+    # FFmpeg settings
+    codec = models.CharField(max_length=50, help_text="libx264, libaom-av1, libopus, aac...")
+    bitrate = models.CharField(max_length=20, help_text="5M, 2M, 128k...")
+    width = models.IntegerField(null=True, blank=True, help_text="Для видео (напр. 3840)")
+
+    # Custom flags
+    custom_pre_args = models.TextField(blank=True, help_text="Аргументы ДО -i (input)")
+    custom_post_args = models.TextField(blank=True, help_text="Аргументы ПОСЛЕ кодеков")
+
+    def __str__(self):
+        return self.name
