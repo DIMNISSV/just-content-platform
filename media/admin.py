@@ -27,24 +27,30 @@ class MediaStreamAdmin(admin.ModelAdmin):
 
     @admin.action(description='Extract selected streams to Assets')
     def extract_to_assets(self, request, queryset):
-        extracted_count = 0
-        for stream in queryset:
-            # Create a placeholder Asset
-            asset = Asset.objects.create(
-                source_stream=stream,
-                type=stream.codec_type,
-                status=Asset.Status.PROCESSING
-            )
-            # Send task to Celery
-            extract_stream_task.delay(asset.id)
-            extracted_count += 1
+        from django.db import transaction
+
+        def start_tasks(asset_ids):
+            for aid in asset_ids:
+                extract_stream_task.delay(aid)
+
+        with transaction.atomic():
+            asset_ids = []
+            for stream in queryset:
+                asset = Asset.objects.create(
+                    source_stream=stream,
+                    type=stream.codec_type,
+                    status=Asset.Status.PROCESSING
+                )
+                asset_ids.append(asset.id)
+
+            # Отправляем в Celery только после того, как commit завершится
+            transaction.on_commit(lambda: start_tasks(asset_ids))
 
         self.message_user(
             request,
-            f"Started extraction for {extracted_count} streams. They will appear in Assets shortly.",
+            f"Started extraction for {len(asset_ids)} streams.",
             messages.SUCCESS
         )
-
 
 @admin.register(Asset)
 class AssetAdmin(admin.ModelAdmin):
