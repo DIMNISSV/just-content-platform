@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block title %}Sign In - Just Content{% endblock %}
+
+{% block content %}
+    <div class="container mx-auto px-4 py-20 flex justify-center">
+        <div class="bg-card p-8 rounded-xl border border-gray-800 w-full max-w-md shadow-2xl">
+            <h2 class="text-3xl font-black mb-6 text-center tracking-tighter">WELCOME BACK</h2>
+
+            <form method="post" class="space-y-4">
+                {% csrf_token %}
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Email Address</label>
+                    <input type="email" name="username" required
+                           class="w-full bg-black border border-gray-700 rounded p-3 text-white focus:border-brand outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Password</label>
+                    <input type="password" name="password" required
+                           class="w-full bg-black border border-gray-700 rounded p-3 text-white focus:border-brand outline-none transition">
+                </div>
+
+                {% if form.errors %}
+                    <p class="text-brand text-sm">Invalid email or password. Please try again.</p>
+                {% endif %}
+
+                <button type="submit"
+                        class="w-full bg-brand text-white font-bold py-3 rounded hover:bg-red-700 transition duration-300">
+                    SIGN IN
+                </button>
+            </form>
+
+            <div class="mt-6 text-center text-gray-500 text-sm">
+                New here? <a href="{% url 'register' %}" class="text-white hover:text-brand font-bold underline">Create
+                an account</a>
+            </div>
+        </div>
+    </div>
+{% endblock %}

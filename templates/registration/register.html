@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}Join - Just Content{% endblock %}
+
+{% block content %}
+    <div class="container mx-auto px-4 py-20 flex justify-center">
+        <div class="bg-card p-8 rounded-xl border border-gray-800 w-full max-w-md shadow-2xl">
+            <h2 class="text-3xl font-black mb-6 text-center tracking-tighter">JOIN PLATFORM</h2>
+
+            <form method="post" class="space-y-4">
+                {% csrf_token %}
+                {% for field in form %}
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">{{ field.label }}</label>
+                        <input type="{{ field.field.widget.input_type }}"
+                               name="{{ field.html_name }}"
+                               required
+                               class="w-full bg-black border border-gray-700 rounded p-3 text-white focus:border-brand outline-none transition">
+                        {% if field.errors %}
+                            <p class="text-brand text-xs mt-1">{{ field.errors.0 }}</p>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+
+                <button type="submit"
+                        class="w-full bg-brand text-white font-bold py-3 rounded hover:bg-red-700 transition duration-300">
+                    CREATE ACCOUNT
+                </button>
+            </form>
+
+            <div class="mt-6 text-center text-gray-500 text-sm">
+                Already have an account? <a href="{% url 'login' %}"
+                                            class="text-white hover:text-brand font-bold underline">Sign In</a>
+            </div>
+        </div>
+    </div>
+{% endblock %}

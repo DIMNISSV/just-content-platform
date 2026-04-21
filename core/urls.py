@@ -10,6 +10,7 @@ urlpatterns = [
     path('', include('content.urls')),
     path('', include('media.urls')),
     path('', HomeView.as_view(), name='home'),
+    path('', include('users.urls')),
 ]
 
 # Раздача медиа-файлов сервером Django (только для режима разработки)

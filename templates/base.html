@@ -22,11 +22,22 @@
         </nav>
         <div class="flex items-center gap-4">
             {% if user.is_authenticated %}
-                <div class="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center font-bold">
+                <div class="hidden sm:flex flex-col items-end">
+                    <span class="text-xs font-bold text-white">{{ user.email }}</span>
+                    <span class="text-[10px] text-brand uppercase font-black">Trust: {{ user.trust_score }}</span>
+                </div>
+                <div class="w-10 h-10 bg-gray-800 rounded-full border border-gray-700 flex items-center justify-center font-black text-brand">
                     {{ user.email|make_list|first|upper }}
                 </div>
+                <form action="{% url 'logout' %}" method="post" class="inline">
+                    {% csrf_token %}
+                    <button type="submit" class="text-xs text-gray-500 hover:text-white transition">LOGOUT</button>
+                </form>
             {% else %}
-                <a href="#" class="text-sm hover:text-brand">Sign In</a>
+                <a href="{% url 'login' %}" class="text-sm font-bold hover:text-brand transition">SIGN IN</a>
+                <a href="{% url 'register' %}"
+                   class="bg-brand text-white text-sm font-bold px-4 py-2 rounded hover:bg-red-700 transition">JOIN
+                    FREE</a>
             {% endif %}
         </div>
     </div>
