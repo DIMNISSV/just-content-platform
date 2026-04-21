@@ -19,7 +19,6 @@ const fetchAssets = async () => {
   try {
     const res = await fetch('/api/v1/media/assets/');
     const data = await res.json();
-    // Support paginated and non-paginated responses
     assets.value = data.results || data;
   } catch (e) {
     console.error("Failed to fetch assets", e);
@@ -63,8 +62,7 @@ const saveWorkbench = async () => {
 
     if (res.ok) {
       alert("Track Group saved successfully!");
-      // Optionally redirect back to the Title admin page
-      window.location.href = `/admin/content/title/${props.objectId}/change/`;
+      window.location.href = `/admin/content/${props.contentType}/${props.objectId}/change/`;
     } else {
       const err = await res.json();
       alert("Error: " + (err.error || "Failed to save"));
@@ -97,7 +95,7 @@ onMounted(() => {
           <select v-model="selectedVideoId" class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white">
             <option disabled value="">-- Select Video --</option>
             <option v-for="v in videoAssets" :key="v.id" :value="v.id">
-              {{ v.storage_path.split('/').pop() }}
+              {{ v.original_name }}[{{ v.quality_label || 'Original' }}] (ID: {{ v.id.substring(0, 6) }})
             </option>
           </select>
         </div>
@@ -125,7 +123,7 @@ onMounted(() => {
                     class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
               <option disabled value="">-- Select Track --</option>
               <option v-for="a in audioAssets" :key="a.id" :value="a.id">
-                [{{ a.type }}] {{ a.storage_path.split('/').pop() }}
+                [{{ a.type }}] {{ a.original_name }} [{{ a.quality_label || 'Original' }}]
               </option>
             </select>
           </div>
@@ -159,5 +157,4 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* Scoped Tailwind classes override standard admin styles inside our container */
 </style>
