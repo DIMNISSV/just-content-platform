@@ -43,7 +43,7 @@ class TitleAdmin(admin.ModelAdmin):
 
     # Создаем кнопку-ссылку в списке фильмов
     def workbench_link(self, obj):
-        return format_html('<a class="button" href="{}workbench/">Open Workbench</a>', obj.pk)
+        return format_html('<a class="button" href="{}/workbench/">Open Workbench</a>', obj.pk)
     workbench_link.short_description = 'Workbench'
     workbench_link.allow_tags = True
 
