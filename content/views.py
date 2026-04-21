@@ -87,7 +87,12 @@ def player_manifest(request, content_type_str, object_id):
     else:
         return Response({"error": "invalid content type"}, status=400)
 
-    # Загружаем все сборки дорожек для данного объекта с оптимизацией запросов
+    try:
+        content_obj = ctype.get_object_for_this_type(id=object_id)
+    except Exception:
+        return Response({"error": "Content not found"}, status=404)
+
+    # 1. Собираем локальные источники
     track_groups = TrackGroup.objects.filter(
         content_type=ctype,
         object_id=object_id
@@ -97,7 +102,6 @@ def player_manifest(request, content_type_str, object_id):
 
     for tg in track_groups:
         if tg.video_asset and tg.video_asset.status == 'READY':
-            # Добавляем базовое ВИДЕО
             sources.append({
                 "asset_id": str(tg.video_asset.id),
                 "type": tg.video_asset.type,
@@ -107,7 +111,6 @@ def player_manifest(request, content_type_str, object_id):
                 "offset_ms": 0,
             })
 
-        # Добавляем связанные АУДИО и СУБТИТРЫ из этой же сборки
         for extra in tg.additional_tracks.all():
             if extra.asset and extra.asset.status == 'READY':
                 sources.append({
@@ -120,37 +123,30 @@ def player_manifest(request, content_type_str, object_id):
                     "meta_info": {"language": extra.language}
                 })
 
-        # На этом этапе можно также дернуть внешний Агрегатор плагинов и добавить external_sources
-        # (Сделаем это в Итерации 6)
-        from aggregator.services import get_external_sources
+    # 2. Собираем внешние источники (Агрегатор)
+    from aggregator.services import get_external_sources
 
-        external_ids = {}
-        content_obj = ctype.get_object_for_this_type(id=object_id)
+    external_ids = {}
+    if content_type_str.lower() == 'episode':
+        if content_obj.title.imdb_id:
+            external_ids['imdb'] = content_obj.title.imdb_id
+        if content_obj.title.tmdb_id:
+            external_ids['tmdb'] = content_obj.title.tmdb_id
+        external_ids['season'] = content_obj.season_number
+        external_ids['episode'] = content_obj.episode_number
+    else:
+        if content_obj.imdb_id:
+            external_ids['imdb'] = content_obj.imdb_id
+        if content_obj.tmdb_id:
+            external_ids['tmdb'] = content_obj.tmdb_id
 
-        # Если это эпизод, берем ID от родительского тайтла (зачастую плагинам нужен TMDB сериала + season/episode)
-        # Для простоты MVP пока передаем просто ID тайтла.
-        if content_type_str.lower() == 'episode':
-            if content_obj.title.imdb_id:
-                external_ids['imdb'] = content_obj.title.imdb_id
-            if content_obj.title.tmdb_id:
-                external_ids['tmdb'] = content_obj.title.tmdb_id
-            external_ids['season'] = content_obj.season_number
-            external_ids['episode'] = content_obj.episode_number
-        else:
-            if content_obj.imdb_id:
-                external_ids['imdb'] = content_obj.imdb_id
-            if content_obj.tmdb_id:
-                external_ids['tmdb'] = content_obj.tmdb_id
+    external_sources = get_external_sources(external_ids)
+    sources.extend(external_sources)
 
-        external_sources = get_external_sources(external_ids)
-
-        # Добавляем внешние источники к локальным
-        sources.extend(external_sources)
-
-        return Response({
-            "content_id": str(object_id),
-            "sources": sources
-        })
+    return Response({
+        "content_id": str(object_id),
+        "sources": sources
+    })
 
 
 @api_view(['POST'])
@@ -277,8 +273,8 @@ class WatchView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # Передаем тип контента для манифеста (title или episode)
         context['content_type'] = 'title'
+        context['player_id'] = self.object.id
         return context
 
 
@@ -331,12 +327,13 @@ def save_workbench(request, content_type_str, object_id):
 
 class EpisodeWatchView(DetailView):
     model = Episode
-    template_name = 'content/watch.html'  # Используем тот же шаблон
+    template_name = 'content/watch.html'
     context_object_name = 'episode'
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # Для шаблона watch.html подменяем title, чтобы он не упал
+        # title нужен шаблону для отображения общей информации о сериале
         context['title'] = self.object.title
         context['content_type'] = 'episode'
+        context['player_id'] = self.object.id  # ID Эпизода
         return context
