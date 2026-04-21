@@ -12,7 +12,7 @@ class RawMediaFile(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     file = models.FileField(upload_to='raw_uploads/')
-    original_name = models.CharField(max_length=255)
+    original_name = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     metadata = models.JSONField(blank=True, null=True, help_text="FFprobe output")
     created_at = models.DateTimeField(auto_now_add=True)
