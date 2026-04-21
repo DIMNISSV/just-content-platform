@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib import messages
+
 from .models import RawMediaFile, MediaStream, Asset
 from .tasks import extract_stream_task
 
@@ -52,9 +53,19 @@ class MediaStreamAdmin(admin.ModelAdmin):
             messages.SUCCESS
         )
 
+
 @admin.register(Asset)
 class AssetAdmin(admin.ModelAdmin):
-    list_display = ('id', 'type', 'status', 'created_at')
+    list_display = ('id', 'type', 'status', 'display_progress', 'created_at')
     list_filter = ('type', 'status')
     search_fields = ('id', 'storage_path')
     readonly_fields = ('storage_path', 'status')
+
+    def display_progress(self, obj):
+        if obj.status == 'READY':
+            return "100%"
+        if obj.status == 'ERROR':
+            return "❌"
+        return f"{obj.progress}%"
+
+    display_progress.short_description = 'Progress'

@@ -64,8 +64,7 @@ class Asset(models.Model):
 
     type = models.CharField(max_length=20, choices=Type.choices)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PROCESSING)
-
-    # Storage path relative to MEDIA_ROOT or S3 bucket
+    progress = models.IntegerField(default=0, help_text="Progress in percent")
     storage_path = models.CharField(max_length=512, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
