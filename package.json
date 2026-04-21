@@ -14,5 +14,8 @@
     "tailwindcss": "^3.4.19",
     "vite": "5.4.21",
     "vue": "^3.5.32"
+  },
+  "dependencies": {
+    "hls.js": "^1.6.16"
   }
 }
