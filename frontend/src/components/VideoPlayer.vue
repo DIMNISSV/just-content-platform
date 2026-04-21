@@ -225,11 +225,39 @@ const toggleFullscreen = () => {
   }
 };
 
+let telemetryInterval = null;
+
+const sendTelemetry = async () => {
+  if (!videoRef.value || videoRef.value.paused || !props.contentId) return;
+
+  const payload = {
+    title_id: props.contentType === 'title' ? props.contentId : null,
+    episode_id: props.contentType === 'episode' ? props.contentId : null,
+    progress_ms: Math.floor(videoRef.value.currentTime * 1000),
+    is_completed: (videoRef.value.duration - videoRef.value.currentTime) < 30 // Считаем завершенным за 30 сек до конца
+  };
+
+  try {
+    await fetch('/api/v1/player/telemetry/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('[id="vue-player-mount"]').dataset.csrf // Передадим через дата-атрибут
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {
+    console.warn("Telemetry failed");
+  }
+};
+
 onMounted(() => {
   fetchManifest();
+  telemetryInterval = setInterval(sendTelemetry, 10000); // Каждые 10 сек
 });
 
 onBeforeUnmount(() => {
+  clearInterval(telemetryInterval);
   stopSyncEngine();
   if (hlsVideo) hlsVideo.destroy();
   if (hlsAudio) hlsAudio.destroy();
