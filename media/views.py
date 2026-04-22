@@ -9,6 +9,6 @@ class AssetViewSet(viewsets.ReadOnlyModelViewSet):
     """
     API для получения готовых ассетов в Воркбенче (Только для админов).
     """
-    queryset = Asset.objects.filter(status=Asset.Status.READY).order_by('-created_at')
+    # queryset = Asset.objects.filter(status=Asset.Status.READY).order_by('-created_at')
     serializer_class = AssetSerializer
     permission_classes = [IsAdminUser]

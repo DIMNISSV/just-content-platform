@@ -1,6 +1,10 @@
 from django.contrib import admin
+from django.contrib import messages
+from django.db import transaction
+from django.http import HttpResponseRedirect
+from django.shortcuts import render
 
-from .models import RawMediaFile, MediaStream, Asset
+from .models import RawMediaFile, MediaStream, Asset, TranscodingPreset, AssetVariant
 from .tasks import extract_stream_task
 
 
@@ -19,6 +23,35 @@ class RawMediaFileAdmin(admin.ModelAdmin):
     inlines = [MediaStreamInline]
 
 
+class AssetVariantInline(admin.TabularInline):
+    model = AssetVariant
+    extra = 0
+    readonly_fields = ('status', 'progress', 'storage_path')
+
+
+@admin.register(Asset)
+class AssetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'type', 'created_at')
+    list_filter = ('type',)
+    search_fields = ('id',)
+    inlines = [AssetVariantInline]
+
+
+@admin.register(AssetVariant)
+class AssetVariantAdmin(admin.ModelAdmin):
+    list_display = ('id', 'asset', 'quality_label', 'status', 'display_progress', 'created_at')
+    list_filter = ('status', 'asset__type')
+    search_fields = ('id', 'storage_path')
+    readonly_fields = ('storage_path', 'status', 'progress')
+
+    def display_progress(self, obj):
+        if obj.status == 'READY': return "100%"
+        if obj.status == 'ERROR': return "❌"
+        return f"{obj.progress}%"
+
+    display_progress.short_description = 'Progress'
+
+
 @admin.register(MediaStream)
 class MediaStreamAdmin(admin.ModelAdmin):
     list_display = ('id', 'raw_file', 'index', 'codec_type', 'codec_name', 'language')
@@ -27,54 +60,44 @@ class MediaStreamAdmin(admin.ModelAdmin):
 
     @admin.action(description='Extract selected streams to Assets (with Presets)')
     def extract_to_assets(self, request, queryset):
-        from django.db import transaction
-        from django.shortcuts import render
-        from django.http import HttpResponseRedirect
-        from .models import TranscodingPreset
-
         if 'apply' in request.POST:
             preset_ids = request.POST.getlist('presets')
             presets = TranscodingPreset.objects.filter(id__in=preset_ids)
 
-            def start_tasks(asset_ids):
-                for aid in asset_ids:
-                    extract_stream_task.delay(aid)
+            def start_tasks(variant_ids):
+                for vid in variant_ids:
+                    extract_stream_task.delay(vid)
 
             with transaction.atomic():
-                asset_ids = []
+                variant_ids = []
                 for stream in queryset:
-                    if not presets:
-                        # Fallback: no presets selected
-                        asset = Asset.objects.create(
-                            source_stream=stream,
-                            type=stream.codec_type,
-                            status=Asset.Status.PROCESSING
-                        )
-                        asset_ids.append(asset.id)
-                    else:
-                        # Filter presets by stream type to avoid processing Audio preset on Video
-                        valid_presets = [p for p in presets if p.type == stream.codec_type]
-                        if not valid_presets:
-                            asset = Asset.objects.create(
-                                source_stream=stream,
-                                type=stream.codec_type,
-                                status=Asset.Status.PROCESSING
-                            )
-                            asset_ids.append(asset.id)
+                    # 1. Создаем ЛОГИЧЕСКИЙ контейнер
+                    asset = Asset.objects.create(
+                        source_stream=stream,
+                        type=stream.codec_type
+                    )
 
+                    valid_presets = [p for p in presets if p.type == stream.codec_type]
+
+                    # 2. Создаем ФИЗИЧЕСКИЕ варианты
+                    if not valid_presets:
+                        variant = AssetVariant.objects.create(
+                            asset=asset,
+                            quality_label="Original"
+                        )
+                        variant_ids.append(variant.id)
+                    else:
                         for preset in valid_presets:
-                            asset = Asset.objects.create(
-                                source_stream=stream,
-                                type=stream.codec_type,
-                                status=Asset.Status.PROCESSING,
+                            variant = AssetVariant.objects.create(
+                                asset=asset,
                                 preset=preset,
                                 quality_label=preset.name
                             )
-                            asset_ids.append(asset.id)
+                            variant_ids.append(variant.id)
 
-                transaction.on_commit(lambda: start_tasks(asset_ids))
+                transaction.on_commit(lambda: start_tasks(variant_ids))
 
-            self.message_user(request, f"Extraction tasks started for {len(asset_ids)} assets.")
+            self.message_user(request, f"Extraction tasks started for {len(variant_ids)} variants.", messages.SUCCESS)
             return HttpResponseRedirect(request.get_full_path())
 
         context = {
@@ -83,20 +106,3 @@ class MediaStreamAdmin(admin.ModelAdmin):
             'title': 'Select Extraction Presets'
         }
         return render(request, 'admin/media/select_presets.html', context)
-
-
-@admin.register(Asset)
-class AssetAdmin(admin.ModelAdmin):
-    list_display = ('id', 'type', 'status', 'display_progress', 'created_at')
-    list_filter = ('type', 'status')
-    search_fields = ('id', 'storage_path')
-    readonly_fields = ('storage_path', 'status')
-
-    def display_progress(self, obj):
-        if obj.status == 'READY':
-            return "100%"
-        if obj.status == 'ERROR':
-            return "❌"
-        return f"{obj.progress}%"
-
-    display_progress.short_description = 'Progress'

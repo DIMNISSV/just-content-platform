@@ -72,10 +72,32 @@ class TranscodingPreset(models.Model):
 
 
 class Asset(models.Model):
+    """
+    Логический контейнер. Олицетворяет, например, "Оригинальную русскую озвучку",
+    независимо от того, в скольких качествах (вариантах) она закодирована.
+    """
+
     class Type(models.TextChoices):
-        VIDEO = 'VIDEO', 'Video (HLS/MP4)'
-        AUDIO = 'AUDIO', 'Audio (AAC/M4A)'
-        SUBTITLE = 'SUBTITLE', 'Subtitle (VTT/SRT)'
+        VIDEO = 'VIDEO', 'Video'
+        AUDIO = 'AUDIO', 'Audio'
+        SUBTITLE = 'SUBTITLE', 'Subtitle'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    source_stream = models.ForeignKey(MediaStream, on_delete=models.SET_NULL, null=True, blank=True,
+                                      related_name='extracted_assets')
+    type = models.CharField(max_length=20, choices=Type.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        orig_name = self.source_stream.raw_file.original_name if self.source_stream and self.source_stream.raw_file else "Unknown Source"
+        return f"Asset {self.id.hex[:8]} [{self.type}] - {orig_name}"
+
+
+class AssetVariant(models.Model):
+    """
+    Физический файл (или HLS-плейлист) на диске.
+    Представляет конкретное качество (1080p, 720p, 128k audio) логического ассета.
+    """
 
     class Status(models.TextChoices):
         PROCESSING = 'PROCESSING', 'Processing'
@@ -83,17 +105,16 @@ class Asset(models.Model):
         ERROR = 'ERROR', 'Error'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    source_stream = models.ForeignKey(MediaStream, on_delete=models.SET_NULL, null=True, blank=True,
-                                      related_name='extracted_assets')
+    asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name='variants')
+    preset = models.ForeignKey(TranscodingPreset, on_delete=models.SET_NULL, null=True, blank=True)
 
-    type = models.CharField(max_length=20, choices=Type.choices)
+    quality_label = models.CharField(max_length=50, blank=True, help_text="Напр: FHD x264 4M")
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PROCESSING)
     progress = models.IntegerField(default=0, help_text="Progress in percent")
     storage_path = models.CharField(max_length=512, blank=True)
-    preset = models.ForeignKey(TranscodingPreset, on_delete=models.SET_NULL, null=True, blank=True)
-    quality_label = models.CharField(max_length=50, blank=True, help_text="Копируется из пресета для плеера")
 
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"Asset {self.id} [{self.type}] - {self.status}"
+        label = self.quality_label or "Original"
+        return f"Variant: {label} ({self.status}) for Asset {self.asset.id.hex[:8]}"
