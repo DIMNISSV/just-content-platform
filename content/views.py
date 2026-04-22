@@ -274,6 +274,19 @@ class WatchView(DetailView):
         context = super().get_context_data(**kwargs)
         context['content_type'] = 'title'
         context['player_id'] = self.object.id
+        context['title_id'] = self.object.id
+        context['episode_id'] = ''
+
+        # Fetch telemetry data
+        context['start_progress'] = 0
+        context['last_track_group'] = ''
+
+        if self.request.user.is_authenticated:
+            history = WatchHistory.objects.filter(user=self.request.user, title=self.object).first()
+            if history:
+                context['start_progress'] = history.progress_ms
+                context['last_track_group'] = history.track_group_id or ''
+
         return context
 
 
@@ -332,9 +345,25 @@ class EpisodeWatchView(DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         # title нужен шаблону для отображения общей информации о сериале
-        context['title'] = self.object.title
+        title = self.object.title
+        context['title'] = title
         context['content_type'] = 'episode'
         context['player_id'] = self.object.id  # ID Эпизода
+        context['title_id'] = title.id
+        context['episode_id'] = self.object.id
+
+        # Fetch telemetry data
+        context['start_progress'] = 0
+        context['last_track_group'] = ''
+
+        if self.request.user.is_authenticated:
+            history = WatchHistory.objects.filter(user=self.request.user, title=title).first()
+            if history:
+                context['last_track_group'] = history.track_group_id or ''
+                # Only resume progress if the last watched episode is the current one
+                if history.episode_id == self.object.id:
+                    context['start_progress'] = history.progress_ms
+
         return context
 
 

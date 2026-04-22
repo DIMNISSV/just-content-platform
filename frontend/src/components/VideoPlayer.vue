@@ -4,7 +4,12 @@ import Hls from 'hls.js';
 
 const props = defineProps({
   contentId: {type: String, required: true},
-  contentType: {type: String, default: 'title'}
+  contentType: {type: String, default: 'title'},
+  titleId: {type: String, required: true},
+  episodeId: {type: String, default: ''},
+  startProgress: {type: [String, Number], default: 0},
+  lastTrackGroup: {type: [String, Number], default: ''},
+  csrfToken: {type: String, required: true}
 });
 
 const videoRef = ref(null);
@@ -19,10 +24,12 @@ const groupedSources = ref({});
 const activeGroupId = ref(null);
 const activeVideo = ref(null);
 const activeAudio = ref(null);
+const hasResumed = ref(false);
 
 let hlsVideo = null;
 let hlsAudio = null;
 let syncInterval = null;
+let telemetryInterval = null;
 
 const fetchManifest = async () => {
   isLoading.value = true;
@@ -33,7 +40,12 @@ const fetchManifest = async () => {
 
     const groupKeys = Object.keys(groupedSources.value);
     if (groupKeys.length > 0) {
-      selectGroup(groupKeys[0]);
+      let targetGroup = groupKeys[0];
+      // Memory: Select the last used track group if it exists in the manifest
+      if (props.lastTrackGroup && groupedSources.value[props.lastTrackGroup]) {
+        targetGroup = props.lastTrackGroup;
+      }
+      selectGroup(targetGroup);
     }
 
     fetchExternalSources();
@@ -84,19 +96,27 @@ const processSources = (sources) => {
       groups[gid].audios.push(source);
     }
   });
-  groupedSources.value = groups;
+
+  // Merge newly found sources into existing
+  groupedSources.value = {...groupedSources.value, ...groups};
 };
 
-const initHls = (mediaElement, source, hlsInstanceVar) => {
+const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
   if (hlsInstanceVar) {
     hlsInstanceVar.destroy();
   }
 
-  // Берем active_path, если он передан (для переключения качества), иначе fallback
   const targetPath = source.active_path || source.storage_path;
+  const startSec = (isVideo && !hasResumed.value && props.startProgress) ? parseInt(props.startProgress) / 1000 : -1;
 
   if (Hls.isSupported() && targetPath.endsWith('.m3u8')) {
-    const hls = new Hls({enableWorker: true});
+    const config = {enableWorker: true};
+    if (startSec > 0) {
+      config.startPosition = startSec;
+      hasResumed.value = true;
+    }
+
+    const hls = new Hls(config);
     hls.loadSource(targetPath);
     hls.attachMedia(mediaElement);
     hls.on(Hls.Events.ERROR, function (event, data) {
@@ -108,14 +128,29 @@ const initHls = (mediaElement, source, hlsInstanceVar) => {
     return hls;
   } else if (mediaElement.canPlayType('application/vnd.apple.mpegurl')) {
     mediaElement.src = targetPath;
+    if (startSec > 0) {
+      mediaElement.addEventListener('loadedmetadata', () => {
+        mediaElement.currentTime = startSec;
+        hasResumed.value = true;
+      }, {once: true});
+    }
     return null;
   } else {
     mediaElement.src = targetPath;
+    if (startSec > 0) {
+      mediaElement.addEventListener('loadedmetadata', () => {
+        mediaElement.currentTime = startSec;
+        hasResumed.value = true;
+      }, {once: true});
+    }
     return null;
   }
 };
 
 const selectGroup = async (groupId) => {
+  const currentTime = videoRef.value ? videoRef.value.currentTime : 0;
+  const isPaused = videoRef.value ? videoRef.value.paused : true;
+
   activeGroupId.value = groupId;
   const group = groupedSources.value[groupId];
 
@@ -125,10 +160,17 @@ const selectGroup = async (groupId) => {
   await nextTick();
 
   if (activeVideo.value && activeVideo.value.type === 'VIDEO') {
-    hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo);
+    hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo, true);
     if (activeAudio.value) {
-      hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio);
+      hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio, false);
     }
+
+    // Resume position if switching versions mid-playback
+    if (hasResumed.value && currentTime > 0) {
+      videoRef.value.currentTime = currentTime;
+      if (!isPaused) videoRef.value.play().catch(e => console.warn(e));
+    }
+
     startSyncEngine();
   } else {
     stopSyncEngine();
@@ -140,7 +182,6 @@ const selectAudio = async (audioSource) => {
   const isPlaying = !videoRef.value.paused;
 
   if (audioSource) {
-    // Инициализируем active_path первым качеством из списка, если он еще не задан
     if (!audioSource.active_path && audioSource.qualities?.length > 0) {
       audioSource.active_path = audioSource.qualities[0].storage_path;
     }
@@ -152,7 +193,7 @@ const selectAudio = async (audioSource) => {
   await nextTick();
 
   if (activeAudio.value) {
-    hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio);
+    hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio, false);
   } else if (hlsAudio) {
     hlsAudio.destroy();
     hlsAudio = null;
@@ -169,7 +210,7 @@ const changeVideoQuality = async (path) => {
   const isPaused = videoRef.value.paused;
   activeVideo.value.active_path = path;
 
-  hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo);
+  hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo, true);
 
   videoRef.value.currentTime = currentTime;
   if (!isPaused) {
@@ -183,13 +224,9 @@ const changeAudioQuality = async (path) => {
   const currentTime = videoRef.value.currentTime;
   const isPaused = videoRef.value.paused;
 
-  // Обновляем путь в текущем выбранном аудио-источнике
   activeAudio.value.active_path = path;
+  hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio, false);
 
-  // Переинициализируем HLS или обычный src для аудио
-  hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio);
-
-  // Восстанавливаем позицию (с учетом оффсета сделает синхронизатор, но здесь зададим базу)
   const offsetSeconds = (activeAudio.value.offset_ms || 0) / 1000;
   audioRef.value.currentTime = currentTime - offsetSeconds;
 
@@ -235,6 +272,50 @@ const handleVideoEvents = () => {
   performSync();
 };
 
+// Telemetry Logic
+const sendTelemetry = async () => {
+  // If the video is an iframe or not loaded, we can't capture telemetry right now
+  if (!videoRef.value) return;
+
+  const currentMs = Math.floor(videoRef.value.currentTime * 1000);
+  const duration = videoRef.value.duration || 0;
+  // Mark as completed if user watched more than 95%
+  const isCompleted = duration > 0 && (videoRef.value.currentTime / duration) > 0.95;
+  const tGroupId = parseInt(activeGroupId.value);
+
+  try {
+    await fetch('/api/v1/player/telemetry/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': props.csrfToken
+      },
+      body: JSON.stringify({
+        title_id: props.titleId,
+        episode_id: props.episodeId || null,
+        track_group_id: isNaN(tGroupId) ? null : tGroupId,
+        progress_ms: currentMs,
+        is_completed: isCompleted
+      })
+    });
+  } catch (e) {
+    console.warn("Telemetry ping failed", e);
+  }
+};
+
+const startTelemetry = () => {
+  if (telemetryInterval) clearInterval(telemetryInterval);
+  telemetryInterval = setInterval(() => {
+    if (videoRef.value && !videoRef.value.paused) {
+      sendTelemetry();
+    }
+  }, 10000);
+};
+
+const stopTelemetry = () => {
+  if (telemetryInterval) clearInterval(telemetryInterval);
+};
+
 const toggleFullscreen = () => {
   if (!document.fullscreenElement) {
     wrapperRef.value.requestFullscreen().catch(err => console.error(err));
@@ -245,16 +326,21 @@ const toggleFullscreen = () => {
 
 onMounted(() => {
   fetchManifest();
+  startTelemetry();
 });
 
 onBeforeUnmount(() => {
   stopSyncEngine();
+  stopTelemetry();
+  sendTelemetry(); // Final save
   if (hlsVideo) hlsVideo.destroy();
   if (hlsAudio) hlsAudio.destroy();
 });
 
 const currentGroupAudios = computed(() => {
-  return activeGroupId.value ? groupedSources.value[activeGroupId.value].audios : [];
+  return activeGroupId.value && groupedSources.value[activeGroupId.value]
+      ? groupedSources.value[activeGroupId.value].audios
+      : [];
 });
 </script>
 
@@ -332,7 +418,6 @@ const currentGroupAudios = computed(() => {
 
         <!-- 1. Ряд выбора дорожки и её качества -->
         <div v-if="currentGroupAudios.length > 0" class="flex justify-between items-end">
-          <!-- Audio Track Selector -->
           <div class="pointer-events-auto flex flex-col gap-2">
             <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Audio Track</label>
             <div class="flex flex-wrap gap-2">
@@ -347,7 +432,6 @@ const currentGroupAudios = computed(() => {
             </div>
           </div>
 
-          <!-- Audio Quality Selector (появляется только если у выбранной дорожки есть варианты) -->
           <div v-if="activeAudio && activeAudio.qualities?.length > 1"
                class="pointer-events-auto flex flex-col gap-2 items-end ml-auto">
             <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Audio Quality</label>

@@ -8,7 +8,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (playerMount) {
         const app = createApp(VideoPlayer, {
             contentId: playerMount.dataset.contentId,
-            contentType: playerMount.dataset.contentType
+            contentType: playerMount.dataset.contentType,
+            titleId: playerMount.dataset.titleId,
+            episodeId: playerMount.dataset.episodeId,
+            startProgress: playerMount.dataset.startProgress,
+            lastTrackGroup: playerMount.dataset.lastTrackGroup,
+            csrfToken: playerMount.dataset.csrf
         });
         app.mount('#vue-player-mount');
     }
