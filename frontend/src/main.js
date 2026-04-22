@@ -3,8 +3,14 @@ import {createApp} from 'vue';
 import VideoPlayer from './components/VideoPlayer.vue';
 import Catalog from './components/Catalog.vue';
 import SyncWorkbench from './components/admin/SyncWorkbench.vue';
+import GlobalSearch from './components/GlobalSearch.vue';
 
 document.addEventListener('DOMContentLoaded', () => {
+    const globalSearchMount = document.getElementById('vue-global-search');
+    if (globalSearchMount) {
+        const app = createApp(GlobalSearch);
+        app.mount('#vue-global-search');
+    }
     const catalogMount = document.getElementById('vue-catalog-mount');
     if (catalogMount) {
         const app = createApp(Catalog);
