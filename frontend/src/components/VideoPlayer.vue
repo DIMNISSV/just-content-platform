@@ -175,12 +175,16 @@ const selectGroup = async (groupId) => {
 
   // Восстановление Видео-качества
   if (activeVideo.value && activeVideo.value.qualities?.length > 0) {
-    if (!activeVideo.value.active_path) {
-      let matchedQuality = null;
-      if (props.lastQuality) {
-        matchedQuality = activeVideo.value.qualities.find(q => q.label === props.lastQuality);
-      }
-      activeVideo.value.active_path = matchedQuality ? matchedQuality.storage_path : activeVideo.value.qualities[0].storage_path;
+    let matchedQuality = null;
+    if (props.lastQuality) {
+      matchedQuality = activeVideo.value.qualities.find(q => q.label === props.lastQuality);
+    }
+
+    // Перезаписываем дефолтный путь от бэкенда, если нашли сохраненное качество
+    if (matchedQuality) {
+      activeVideo.value.active_path = matchedQuality.storage_path;
+    } else if (!activeVideo.value.active_path) {
+      activeVideo.value.active_path = activeVideo.value.qualities[0].storage_path;
     }
   }
 
@@ -200,7 +204,6 @@ watch(videoRef, (newEl) => {
   if (newEl && activeVideo.value && activeVideo.value.type === 'VIDEO') {
     hlsVideo = initHls(newEl, activeVideo.value, hlsVideo, true);
     newEl.load();
-    newEl.play().catch(() => console.log("[Player] Autoplay waiting for user interaction"));
   }
 });
 
