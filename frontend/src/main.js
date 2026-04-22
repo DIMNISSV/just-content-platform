@@ -13,6 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
             episodeId: playerMount.dataset.episodeId,
             startProgress: playerMount.dataset.startProgress,
             lastTrackGroup: playerMount.dataset.lastTrackGroup,
+            lastAudioAsset: playerMount.dataset.lastAudioAsset,
+            lastQuality: playerMount.dataset.lastQuality,
             csrfToken: playerMount.dataset.csrf
         });
         app.mount('#vue-player-mount');

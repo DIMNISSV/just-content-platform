@@ -109,12 +109,13 @@ def player_manifest(request, content_type_str, object_id):
             if qualities:
                 sources.append({
                     "id": f"video_{tg.id}",
+                    "asset_id": str(tg.video_asset.id) if tg.video_asset else None,
                     "type": "VIDEO",
                     "sync_group_id": str(tg.id),
                     "group_title": tg.name,
                     "offset_ms": 0,
                     "qualities": qualities,
-                    "active_path": qualities[0]["storage_path"]  # Самое высокое качество по умолчанию
+                    "active_path": qualities[0]["storage_path"]
                 })
 
         # 2. AUDIO & SUBTITLE QUALITIES
@@ -133,6 +134,7 @@ def player_manifest(request, content_type_str, object_id):
                 if qualities:
                     sources.append({
                         "id": f"extra_{extra.id}",
+                        "asset_id": str(extra.asset.id) if extra.asset else None,
                         "type": extra.asset.type,
                         "sync_group_id": str(tg.id),
                         "group_title": tg.name,
@@ -155,33 +157,34 @@ def player_telemetry(request):
     Expected JSON: {"title_id": 1, "episode_id": null, "track_group_id": 2, "progress_ms": 15000, "is_completed": false}
     """
     if not request.user.is_authenticated:
-        return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+        return Response({"error": "Unauthorized"}, status=401)
 
-    title_id = request.data.get('title_id')
-    progress_ms = request.data.get('progress_ms', 0)
-    is_completed = request.data.get('is_completed', False)
-
+    data = request.data
+    title_id = data.get('title_id')
     if not title_id:
-        return Response({"error": "title_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "title_id is required"}, status=400)
 
     try:
         title = Title.objects.get(id=title_id)
     except Title.DoesNotExist:
-        return Response({"error": "Title not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"error": "Title not found"}, status=404)
 
-    episode_id = request.data.get('episode_id')
-    track_group_id = request.data.get('track_group_id')
+    # Собираем данные
+    episode_id = data.get('episode_id')
+    track_group_id = data.get('track_group_id')
+    audio_asset_id = data.get('audio_asset_id')
+    quality_label = data.get('quality_label')
+    progress_ms = data.get('progress_ms', 0)
+    is_completed = data.get('is_completed', False)
 
-    episode = Episode.objects.filter(id=episode_id).first() if episode_id else None
-    track_group = TrackGroup.objects.filter(id=track_group_id).first() if track_group_id else None
-
-    # Update or create the history record for this title
-    history, created = WatchHistory.objects.update_or_create(
+    history, _ = WatchHistory.objects.update_or_create(
         user=request.user,
         title=title,
         defaults={
-            'episode': episode,
-            'track_group': track_group,
+            'episode_id': episode_id if episode_id else None,
+            'track_group_id': track_group_id if track_group_id else None,
+            'last_audio_asset_id': audio_asset_id if audio_asset_id else None,
+            'last_quality_label': quality_label,
             'progress_ms': progress_ms,
             'is_completed': is_completed
         }
@@ -280,12 +283,16 @@ class WatchView(DetailView):
         # Fetch telemetry data
         context['start_progress'] = 0
         context['last_track_group'] = ''
+        context['last_audio_asset'] = ''
+        context['last_quality'] = ''
 
         if self.request.user.is_authenticated:
             history = WatchHistory.objects.filter(user=self.request.user, title=self.object).first()
             if history:
                 context['start_progress'] = history.progress_ms
                 context['last_track_group'] = history.track_group_id or ''
+                context['last_audio_asset'] = str(history.last_audio_asset_id) if history.last_audio_asset_id else ''
+                context['last_quality'] = history.last_quality_label or ''
 
         return context
 
@@ -355,12 +362,16 @@ class EpisodeWatchView(DetailView):
         # Fetch telemetry data
         context['start_progress'] = 0
         context['last_track_group'] = ''
+        context['last_audio_asset'] = ''
+        context['last_quality'] = ''
 
         if self.request.user.is_authenticated:
             history = WatchHistory.objects.filter(user=self.request.user, title=title).first()
             if history:
                 context['last_track_group'] = history.track_group_id or ''
-                # Only resume progress if the last watched episode is the current one
+                context['last_audio_asset'] = str(history.last_audio_asset_id) if history.last_audio_asset_id else ''
+                context['last_quality'] = history.last_quality_label or ''
+                # Восстанавливаем время, только если это та же самая серия
                 if history.episode_id == self.object.id:
                     context['start_progress'] = history.progress_ms
 

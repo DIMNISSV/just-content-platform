@@ -9,6 +9,8 @@ const props = defineProps({
   episodeId: {type: String, default: ''},
   startProgress: {type: [String, Number], default: 0},
   lastTrackGroup: {type: [String, Number], default: ''},
+  lastAudioAsset: {type: String, default: ''},
+  lastQuality: {type: String, default: ''},
   csrfToken: {type: String, required: true}
 });
 
@@ -40,11 +42,9 @@ const fetchManifest = async () => {
 
     const groupKeys = Object.keys(groupedSources.value);
     if (groupKeys.length > 0) {
-      // Ищем ID группы, приводя всё к строке для надёжности сравнения
       const rememberedId = groupKeys.find(k => String(k) === String(props.lastTrackGroup));
       const targetGroup = rememberedId || groupKeys[0];
 
-      console.log(`[Player] Initial group selection: ${targetGroup} (Remembered: ${props.lastTrackGroup})`);
       await selectGroup(targetGroup);
     }
 
@@ -97,8 +97,6 @@ const processSources = (sources) => {
       groups[gid].audios.push(source);
     }
   });
-
-  // Merge newly found sources into existing
   groupedSources.value = {...groupedSources.value, ...groups};
 };
 
@@ -114,7 +112,6 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
 
   if (Hls.isSupported() && targetPath.endsWith('.m3u8')) {
     const config = {enableWorker: true};
-
     if (startSec > 0) {
       config.startPosition = startSec;
       hasResumed.value = true;
@@ -123,7 +120,6 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
     const hls = new Hls(config);
     hls.loadSource(targetPath);
     hls.attachMedia(mediaElement);
-
     hls.on(Hls.Events.ERROR, function (event, data) {
       if (data.fatal) {
         console.error("HLS Fatal Error:", data);
@@ -141,7 +137,6 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
     }
     return null;
   } else {
-    // Обычный MP4/MP3/M4A
     mediaElement.src = targetPath;
     if (startSec > 0) {
       mediaElement.addEventListener('loadedmetadata', () => {
@@ -154,7 +149,6 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
 };
 
 const selectGroup = async (groupId) => {
-  console.log(`[Player] Selecting group: ${groupId}`);
   activeGroupId.value = groupId;
   const group = groupedSources.value[groupId];
 
@@ -166,23 +160,56 @@ const selectGroup = async (groupId) => {
   await nextTick();
 
   activeVideo.value = group.video;
-  activeAudio.value = group.audios.length > 0 ? group.audios[0] : null;
 
-  // 3. Гарантируем наличие путей (active_path)
-  if (activeVideo.value && !activeVideo.value.active_path && activeVideo.value.qualities?.length > 0) {
-    activeVideo.value.active_path = activeVideo.value.qualities[0].storage_path;
+  // Восстановление Аудио-дорожки
+  if (group.audios.length > 0) {
+    if (props.lastAudioAsset) {
+      const rememberedAudio = group.audios.find(a => a.asset_id === props.lastAudioAsset);
+      activeAudio.value = rememberedAudio || group.audios[0];
+    } else {
+      activeAudio.value = group.audios[0];
+    }
+  } else {
+    activeAudio.value = null;
   }
+
+  // Восстановление Видео-качества
+  if (activeVideo.value && activeVideo.value.qualities?.length > 0) {
+    if (!activeVideo.value.active_path) {
+      let matchedQuality = null;
+      if (props.lastQuality) {
+        matchedQuality = activeVideo.value.qualities.find(q => q.label === props.lastQuality);
+      }
+      activeVideo.value.active_path = matchedQuality ? matchedQuality.storage_path : activeVideo.value.qualities[0].storage_path;
+    }
+  }
+
+  // Гарантируем active_path для аудио
   if (activeAudio.value && !activeAudio.value.active_path && activeAudio.value.qualities?.length > 0) {
     activeAudio.value.active_path = activeAudio.value.qualities[0].storage_path;
   }
 
-  // 4. Запускаем/останавливаем движок синхронизации
   if (activeVideo.value?.type === 'VIDEO') {
     startSyncEngine();
   } else {
     stopSyncEngine();
   }
 };
+
+watch(videoRef, (newEl) => {
+  if (newEl && activeVideo.value && activeVideo.value.type === 'VIDEO') {
+    hlsVideo = initHls(newEl, activeVideo.value, hlsVideo, true);
+    newEl.load();
+    newEl.play().catch(() => console.log("[Player] Autoplay waiting for user interaction"));
+  }
+});
+
+watch(audioRef, (newEl) => {
+  if (newEl && activeAudio.value) {
+    hlsAudio = initHls(newEl, activeAudio.value, hlsAudio, false);
+    newEl.load();
+  }
+});
 
 const selectAudio = async (audioSource) => {
   const currentTime = videoRef.value.currentTime;
@@ -215,7 +242,6 @@ const changeVideoQuality = async (path) => {
 
   const currentTime = videoRef.value.currentTime;
   const isPaused = videoRef.value.paused;
-
   activeVideo.value.active_path = path;
 
   hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo, true);
@@ -236,9 +262,7 @@ const changeAudioQuality = async (path) => {
   const offsetSeconds = (activeAudio.value.offset_ms || 0) / 1000;
   audioRef.value.currentTime = currentTime - offsetSeconds;
 
-  if (!isPaused) {
-    audioRef.value.play().catch(e => console.warn("Audio resume failed", e));
-  }
+  if (!isPaused) audioRef.value.play().catch(e => console.warn("Audio resume failed", e));
 };
 
 const performSync = () => {
@@ -278,16 +302,21 @@ const handleVideoEvents = () => {
   performSync();
 };
 
-// Telemetry Logic
 const sendTelemetry = async () => {
-  // If the video is an iframe or not loaded, we can't capture telemetry right now
   if (!videoRef.value) return;
 
   const currentMs = Math.floor(videoRef.value.currentTime * 1000);
   const duration = videoRef.value.duration || 0;
-  // Mark as completed if user watched more than 95%
   const isCompleted = duration > 0 && (videoRef.value.currentTime / duration) > 0.95;
   const tGroupId = parseInt(activeGroupId.value);
+
+  // Собираем текущие данные о качестве и аудио
+  let currentQualityLabel = null;
+  if (activeVideo.value && activeVideo.value.qualities) {
+    const q = activeVideo.value.qualities.find(q => q.storage_path === activeVideo.value.active_path);
+    if (q) currentQualityLabel = q.label;
+  }
+  const currentAudioAssetId = activeAudio.value ? activeAudio.value.asset_id : null;
 
   try {
     await fetch('/api/v1/player/telemetry/', {
@@ -300,6 +329,8 @@ const sendTelemetry = async () => {
         title_id: props.titleId,
         episode_id: props.episodeId || null,
         track_group_id: isNaN(tGroupId) ? null : tGroupId,
+        audio_asset_id: currentAudioAssetId,
+        quality_label: currentQualityLabel,
         progress_ms: currentMs,
         is_completed: isCompleted
       })
@@ -338,7 +369,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   stopSyncEngine();
   stopTelemetry();
-  sendTelemetry(); // Final save
+  sendTelemetry();
   if (hlsVideo) hlsVideo.destroy();
   if (hlsAudio) hlsAudio.destroy();
 });
@@ -347,24 +378,6 @@ const currentGroupAudios = computed(() => {
   return activeGroupId.value && groupedSources.value[activeGroupId.value]
       ? groupedSources.value[activeGroupId.value].audios
       : [];
-});
-
-watch(videoRef, (newEl) => {
-  if (newEl && activeVideo.value && activeVideo.value.type === 'VIDEO') {
-    console.log("[Player] videoRef ready, initializing HLS");
-    hlsVideo = initHls(newEl, activeVideo.value, hlsVideo, true);
-    newEl.load();
-    newEl.play().catch(() => console.log("Autoplay waiting for user"));
-  }
-});
-
-// Наблюдаем за появлением audioRef в DOM
-watch(audioRef, (newEl) => {
-  if (newEl && activeAudio.value) {
-    console.log("[Player] audioRef ready, initializing HLS");
-    hlsAudio = initHls(newEl, activeAudio.value, hlsAudio, false);
-    newEl.load();
-  }
 });
 </script>
 
@@ -390,7 +403,6 @@ watch(audioRef, (newEl) => {
           ref="videoRef"
           class="w-full h-full"
           controls
-          preload
           playsinline
           crossorigin="anonymous"
           :muted="!!activeAudio"
