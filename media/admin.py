@@ -81,9 +81,11 @@ class MediaStreamAdmin(admin.ModelAdmin):
 
                     # 2. Создаем ФИЗИЧЕСКИЕ варианты
                     if not valid_presets:
+                        # Если пресеты не выбраны, создаем вариант "Original"
                         variant = AssetVariant.objects.create(
                             asset=asset,
-                            quality_label="Original"
+                            quality_label="Original",
+                            status=AssetVariant.Status.PROCESSING  # Исправлено здесь
                         )
                         variant_ids.append(variant.id)
                     else:
@@ -91,7 +93,8 @@ class MediaStreamAdmin(admin.ModelAdmin):
                             variant = AssetVariant.objects.create(
                                 asset=asset,
                                 preset=preset,
-                                quality_label=preset.name
+                                quality_label=preset.name,
+                                status=AssetVariant.Status.PROCESSING
                             )
                             variant_ids.append(variant.id)
 

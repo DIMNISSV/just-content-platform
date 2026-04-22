@@ -75,12 +75,6 @@ def rate_track_group(request, group_id):
 
 @api_view(['GET'])
 def player_manifest(request, content_type_str, object_id):
-    """
-    Эндпоинт генерации манифеста для VideoPlayer.vue.
-    content_type_str может быть 'title' (для фильмов) или 'episode' (для сериалов).
-    Возвращает плоский массив `sources` с видео и привязанными дорожками.
-    Отдает только локальные TrackGroups.
-    """
     if content_type_str.lower() == 'title':
         ctype = ContentType.objects.get_for_model(Title)
     elif content_type_str.lower() == 'episode':
@@ -88,31 +82,28 @@ def player_manifest(request, content_type_str, object_id):
     else:
         return Response({"error": "invalid content type"}, status=400)
 
+    # Подтягиваем логические ассеты и их варианты
     track_groups = TrackGroup.objects.filter(
         content_type=ctype,
         object_id=object_id
-    ).prefetch_related('video_asset__source_stream', 'additional_tracks__asset__source_stream')
+    ).prefetch_related(
+        'video_asset__variants__preset',
+        'additional_tracks__asset__variants'
+    )
 
     sources = []
     for tg in track_groups:
         # 1. VIDEO QUALITIES
-        if tg.video_asset and tg.video_asset.status == 'READY':
-            # Если есть привязка к стриму, ищем все доступные качества этого же стрима
-            if tg.video_asset.source_stream:
-                v_assets = Asset.objects.filter(
-                    source_stream=tg.video_asset.source_stream,
-                    type='VIDEO',
-                    status='READY'
-                ).order_by('-preset__width')  # Высокое качество сверху
-            else:
-                v_assets = [tg.video_asset]
-
+        if tg.video_asset:
+            # Сортируем по ширине пресета (от высокого качества к низкому)
+            v_variants = tg.video_asset.variants.filter(status='READY').order_by('-preset__width')
             qualities = []
-            for a in v_assets:
+
+            for v in v_variants:
                 qualities.append({
-                    "asset_id": str(a.id),
-                    "label": a.quality_label or "Original",
-                    "storage_path": f"{settings.MEDIA_URL}{a.storage_path}"
+                    "variant_id": str(v.id),
+                    "label": v.quality_label or "Original",
+                    "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"
                 })
 
             if qualities:
@@ -123,27 +114,20 @@ def player_manifest(request, content_type_str, object_id):
                     "group_title": tg.name,
                     "offset_ms": 0,
                     "qualities": qualities,
-                    "active_path": qualities[0]["storage_path"]
+                    "active_path": qualities[0]["storage_path"]  # Самое высокое качество по умолчанию
                 })
 
-        # 2. AUDIO QUALITIES
+        # 2. AUDIO & SUBTITLE QUALITIES
         for extra in tg.additional_tracks.all():
-            if extra.asset and extra.asset.status == 'READY':
-                if extra.asset.source_stream:
-                    a_assets = Asset.objects.filter(
-                        source_stream=extra.asset.source_stream,
-                        type=extra.asset.type,
-                        status='READY'
-                    )
-                else:
-                    a_assets = [extra.asset]
-
+            if extra.asset:
+                a_variants = extra.asset.variants.filter(status='READY')
                 qualities = []
-                for a in a_assets:
+
+                for v in a_variants:
                     qualities.append({
-                        "asset_id": str(a.id),
-                        "label": a.quality_label or "Original",
-                        "storage_path": f"{settings.MEDIA_URL}{a.storage_path}"
+                        "variant_id": str(v.id),
+                        "label": v.quality_label or "Original",
+                        "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"
                     })
 
                 if qualities:

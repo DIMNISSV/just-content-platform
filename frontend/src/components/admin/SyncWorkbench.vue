@@ -95,7 +95,7 @@ onMounted(() => {
           <select v-model="selectedVideoId" class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white">
             <option disabled value="">-- Select Video --</option>
             <option v-for="v in videoAssets" :key="v.id" :value="v.id">
-              {{ v.original_name }}[{{ v.quality_label || 'Original' }}] (ID: {{ v.id.substring(0, 6) }})
+              {{ v.original_name }} ({{ v.variants.length }} qualities) [ID: {{ v.id.substring(0,6) }}]
             </option>
           </select>
         </div>
@@ -119,11 +119,10 @@ onMounted(() => {
              class="flex items-end gap-4 mb-3 bg-gray-900 p-3 rounded">
           <div class="flex-1">
             <label class="block text-xs text-gray-400 mb-1">Asset</label>
-            <select v-model="track.asset_id"
-                    class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
+            <select v-model="track.asset_id" class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
               <option disabled value="">-- Select Track --</option>
               <option v-for="a in audioAssets" :key="a.id" :value="a.id">
-                [{{ a.type }}] {{ a.original_name }} [{{ a.quality_label || 'Original' }}]
+                [{{ a.type }}] {{ a.original_name }} ({{ a.variants.length }} qual)
               </option>
             </select>
           </div>

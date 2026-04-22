@@ -102,7 +102,6 @@ def extract_stream_task(variant_id):
         return
 
     # 1. Подготовка путей
-    # ВАЖНО: Разносим разные качества одного ассета по разным папкам!
     base_out_dir = os.path.join(settings.MEDIA_ROOT, 'assets', str(asset.id), str(variant.id))
     os.makedirs(base_out_dir, exist_ok=True)
     input_path = raw_file.file.path
@@ -175,7 +174,7 @@ def extract_stream_task(variant_id):
 
     logger.info(f"Executing FFmpeg command: {' '.join(cmd)}")
 
-    # 3. Запуск и прогресс (сохраняем в variant, а не в asset)
+    # 3. Запуск и прогресс
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
