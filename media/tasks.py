@@ -91,7 +91,6 @@ def extract_stream_task(variant_id):
     logger.info(f"--- Starting extraction for Variant: {variant_id} ---")
 
     try:
-        # Загружаем вариант и все связанные данные
         variant = AssetVariant.objects.select_related('asset__source_stream__raw_file', 'preset').get(id=variant_id)
         asset = variant.asset
         stream = asset.source_stream
@@ -121,13 +120,11 @@ def extract_stream_task(variant_id):
 
     container = preset.container if (preset and preset.container) else (
         'm3u8' if stream.codec_type == 'VIDEO' else 'm4a')
-    rel_path = ""
-    out_file = ""
+
+    out_file_name = f'master.{container}'
+    rel_path = f'assets/{asset.id}/{variant.id}/{out_file_name}'
 
     if stream.codec_type == MediaStream.StreamType.VIDEO:
-        out_file = os.path.join(base_out_dir, f'master.{container}')
-        rel_path = f'assets/{asset.id}/{variant.id}/master.{container}'
-
         v_codec = preset.codec if preset and preset.codec else 'libx264'
         v_bitrate = preset.bitrate if preset and preset.bitrate else '2M'
 
@@ -143,46 +140,48 @@ def extract_stream_task(variant_id):
 
         if container == 'm3u8':
             cmd.extend(['-hls_time', '10', '-hls_playlist_type', 'vod'])
-            if not (preset and preset.custom_post_args and '-hls_segment_filename' in preset.custom_post_args):
-                m4s_f = ['av1', '265', 'hevc']
-                if any(target in v_codec.lower() for target in m4s_f):
-                    cmd.extend([
-                        '-hls_segment_type', 'fmp4',
-                        '-hls_segment_filename', os.path.join(base_out_dir, 'segment_%03d.m4s')
-                    ])
-                else:
-                    cmd.extend([
-                        '-hls_segment_filename', os.path.join(base_out_dir, 'segment_%03d.ts')
-                    ])
+
+            m4s_f = ['av1', '265', 'hevc']
+            if any(target in v_codec.lower() for target in m4s_f):
+                cmd.extend([
+                    '-hls_segment_type', 'fmp4',
+                    '-hls_fmp4_init_filename', 'init.mp4',
+                    '-hls_segment_filename', 'segment_%03d.m4s'
+                ])
+            else:
+                cmd.extend([
+                    '-hls_segment_filename', 'segment_%03d.ts'
+                ])
 
     elif stream.codec_type == MediaStream.StreamType.AUDIO:
-        out_file = os.path.join(base_out_dir, f'audio.{container}')
-        rel_path = f'assets/{asset.id}/{variant.id}/audio.{container}'
+        out_file_name = f'audio.{container}'
+        rel_path = f'assets/{asset.id}/{variant.id}/{out_file_name}'
 
         a_codec = preset.codec if preset and preset.codec else 'aac'
         a_bitrate = preset.bitrate if preset and preset.bitrate else '128k'
         cmd.extend(['-c:a', a_codec, '-b:a', a_bitrate])
 
     elif stream.codec_type == MediaStream.StreamType.SUBTITLE:
-        out_file = os.path.join(base_out_dir, 'sub.vtt')
+        out_file_name = 'sub.vtt'
         rel_path = f'assets/{asset.id}/{variant.id}/sub.vtt'
         cmd.extend(['-c:s', 'webvtt'])
 
     if preset and preset.custom_post_args:
         cmd.extend(shlex.split(preset.custom_post_args))
 
-    cmd.append(out_file)
+    cmd.append(out_file_name)
 
-    logger.info(f"Executing FFmpeg command: {' '.join(cmd)}")
+    logger.info(f"Executing FFmpeg command in {base_out_dir}: {' '.join(cmd)}")
 
-    # 3. Запуск и прогресс
+    # 3. Запуск процесса с указанием cwd
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         universal_newlines=True,
         encoding='utf-8',
-        errors='replace'
+        errors='replace',
+        cwd=base_out_dir
     )
 
     last_db_update = time.time()
