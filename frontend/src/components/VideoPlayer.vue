@@ -136,14 +136,23 @@ const selectGroup = async (groupId) => {
 };
 
 const selectAudio = async (audioSource) => {
-  const isPlaying = !videoRef.value.paused;
   const currentTime = videoRef.value.currentTime;
-
-  activeAudio.value = audioSource;
-  await nextTick();
+  const isPlaying = !videoRef.value.paused;
 
   if (audioSource) {
-    hlsAudio = initHls(audioRef.value, audioSource, hlsAudio);
+    // Инициализируем active_path первым качеством из списка, если он еще не задан
+    if (!audioSource.active_path && audioSource.qualities?.length > 0) {
+      audioSource.active_path = audioSource.qualities[0].storage_path;
+    }
+    activeAudio.value = audioSource;
+  } else {
+    activeAudio.value = null;
+  }
+
+  await nextTick();
+
+  if (activeAudio.value) {
+    hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio);
   } else if (hlsAudio) {
     hlsAudio.destroy();
     hlsAudio = null;
@@ -165,6 +174,27 @@ const changeVideoQuality = async (path) => {
   videoRef.value.currentTime = currentTime;
   if (!isPaused) {
     videoRef.value.play().catch(e => console.warn(e));
+  }
+};
+
+const changeAudioQuality = async (path) => {
+  if (!audioRef.value || activeAudio.value.active_path === path) return;
+
+  const currentTime = videoRef.value.currentTime;
+  const isPaused = videoRef.value.paused;
+
+  // Обновляем путь в текущем выбранном аудио-источнике
+  activeAudio.value.active_path = path;
+
+  // Переинициализируем HLS или обычный src для аудио
+  hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio);
+
+  // Восстанавливаем позицию (с учетом оффсета сделает синхронизатор, но здесь зададим базу)
+  const offsetSeconds = (activeAudio.value.offset_ms || 0) / 1000;
+  audioRef.value.currentTime = currentTime - offsetSeconds;
+
+  if (!isPaused) {
+    audioRef.value.play().catch(e => console.warn("Audio resume failed", e));
   }
 };
 
@@ -298,38 +328,48 @@ const currentGroupAudios = computed(() => {
 
       <!-- BOTTOM OVERLAY -->
       <div
-          class="absolute bottom-16 left-0 right-0 px-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none flex justify-between items-end">
+          class="absolute bottom-16 left-0 right-0 px-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none flex flex-col gap-4">
 
-        <!-- Audio selector -->
-        <div v-if="currentGroupAudios.length > 0" class="pointer-events-auto flex flex-col gap-2">
-          <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Audio Track</label>
-          <div class="flex flex-wrap gap-2">
-            <button
-                @click="selectAudio(null)"
-                :class="['px-3 py-1 text-sm rounded transition-colors border', activeAudio === null ? 'bg-white text-black border-white' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']"
-            >
-              Original (Native)
-            </button>
-            <button
-                v-for="audio in currentGroupAudios" :key="audio.asset_id" @click="selectAudio(audio)"
-                :class="['px-3 py-1 text-sm rounded transition-colors border', activeAudio?.asset_id === audio.asset_id ? 'bg-white text-black border-white' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']"
-            >
-              {{ audio.meta_info?.language || 'Dub Track' }}
-            </button>
+        <!-- 1. Ряд выбора дорожки и её качества -->
+        <div v-if="currentGroupAudios.length > 0" class="flex justify-between items-end">
+          <!-- Audio Track Selector -->
+          <div class="pointer-events-auto flex flex-col gap-2">
+            <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Audio Track</label>
+            <div class="flex flex-wrap gap-2">
+              <button @click="selectAudio(null)"
+                      :class="['px-3 py-1 text-sm rounded transition-colors border', activeAudio === null ? 'bg-white text-black border-white' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']">
+                Original
+              </button>
+              <button v-for="audio in currentGroupAudios" :key="audio.id" @click="selectAudio(audio)"
+                      :class="['px-3 py-1 text-sm rounded transition-colors border', activeAudio?.id === audio.id ? 'bg-white text-black border-white' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']">
+                {{ audio.meta_info?.language || 'Dub' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Audio Quality Selector (появляется только если у выбранной дорожки есть варианты) -->
+          <div v-if="activeAudio && activeAudio.qualities?.length > 1"
+               class="pointer-events-auto flex flex-col gap-2 items-end ml-auto">
+            <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Audio Quality</label>
+            <div class="flex flex-wrap gap-2 justify-end">
+              <button v-for="q in activeAudio.qualities" :key="q.variant_id" @click="changeAudioQuality(q.storage_path)"
+                      :class="['px-3 py-1 text-sm rounded transition-colors border', activeAudio.active_path === q.storage_path ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']">
+                {{ q.label }}
+              </button>
+            </div>
           </div>
         </div>
 
-        <!-- Video Quality Selector -->
-        <div v-if="activeVideo && activeVideo.qualities && activeVideo.qualities.length > 1"
-             class="pointer-events-auto flex flex-col gap-2 items-end ml-auto">
-          <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Quality</label>
-          <div class="flex flex-wrap gap-2 justify-end">
-            <button
-                v-for="q in activeVideo.qualities" :key="q.asset_id" @click="changeVideoQuality(q.storage_path)"
-                :class="['px-3 py-1 text-sm rounded transition-colors border', activeVideo.active_path === q.storage_path ? 'bg-brand text-white border-brand' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']"
-            >
-              {{ q.label }}
-            </button>
+        <!-- 2. Ряд выбора видео-качества -->
+        <div v-if="activeVideo && activeVideo.qualities && activeVideo.qualities.length > 1" class="flex justify-end">
+          <div class="pointer-events-auto flex flex-col gap-2 items-end">
+            <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Video Quality</label>
+            <div class="flex flex-wrap gap-2 justify-end">
+              <button v-for="q in activeVideo.qualities" :key="q.variant_id" @click="changeVideoQuality(q.storage_path)"
+                      :class="['px-3 py-1 text-sm rounded transition-colors border', activeVideo.active_path === q.storage_path ? 'bg-brand text-white border-brand' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']">
+                {{ q.label }}
+              </button>
+            </div>
           </div>
         </div>
 
