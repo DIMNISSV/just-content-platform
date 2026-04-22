@@ -1,5 +1,5 @@
 <script setup>
-import {computed, nextTick, onBeforeUnmount, onMounted, ref} from 'vue';
+import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import Hls from 'hls.js';
 
 const props = defineProps({
@@ -154,41 +154,29 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
 };
 
 const selectGroup = async (groupId) => {
+  console.log(`[Player] Selecting group: ${groupId}`);
   activeGroupId.value = groupId;
   const group = groupedSources.value[groupId];
 
   if (!group) return;
 
-  // 1. Устанавливаем данные источников
-  activeVideo.value = group.video;
-  // По умолчанию берем первую аудиодорожку, если она есть
-  activeAudio.value = group.audios.length > 0 ? group.audios[0] : null;
+  activeVideo.value = null;
+  activeAudio.value = null;
 
-  // 2. Ждем, когда Vue отрендерит <video> и <audio> теги из-за v-if
   await nextTick();
 
-  // 3. Инициализируем Видео
-  if (activeVideo.value && activeVideo.value.type === 'VIDEO' && videoRef.value) {
-    hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo, true);
+  activeVideo.value = group.video;
+  activeAudio.value = group.audios.length > 0 ? group.audios[0] : null;
 
-    // Принудительно запускаем загрузку и пробуем играть
-    videoRef.value.load();
-    videoRef.value.play().catch(() => {
-      console.log("[Player] Autoplay blocked, waiting for user interaction.");
-    });
+  // 3. Гарантируем наличие путей (active_path)
+  if (activeVideo.value && !activeVideo.value.active_path && activeVideo.value.qualities?.length > 0) {
+    activeVideo.value.active_path = activeVideo.value.qualities[0].storage_path;
+  }
+  if (activeAudio.value && !activeAudio.value.active_path && activeAudio.value.qualities?.length > 0) {
+    activeAudio.value.active_path = activeAudio.value.qualities[0].storage_path;
   }
 
-  // 4. Инициализируем Аудио
-  if (activeAudio.value && audioRef.value) {
-    // Гарантируем наличие активного пути качества
-    if (!activeAudio.value.active_path && activeAudio.value.qualities?.length > 0) {
-      activeAudio.value.active_path = activeAudio.value.qualities[0].storage_path;
-    }
-    hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio, false);
-    audioRef.value.load();
-  }
-
-  // 5. Запускаем движок синхронизации
+  // 4. Запускаем/останавливаем движок синхронизации
   if (activeVideo.value?.type === 'VIDEO') {
     startSyncEngine();
   } else {
@@ -223,18 +211,17 @@ const selectAudio = async (audioSource) => {
 };
 
 const changeVideoQuality = async (path) => {
-  if (activeVideo.value.active_path === path) return;
+  if (!activeVideo.value || activeVideo.value.active_path === path) return;
 
   const currentTime = videoRef.value.currentTime;
   const isPaused = videoRef.value.paused;
+
   activeVideo.value.active_path = path;
 
   hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo, true);
 
   videoRef.value.currentTime = currentTime;
-  if (!isPaused) {
-    videoRef.value.play().catch(e => console.warn(e));
-  }
+  if (!isPaused) videoRef.value.play().catch(e => console.warn(e));
 };
 
 const changeAudioQuality = async (path) => {
@@ -361,6 +348,24 @@ const currentGroupAudios = computed(() => {
       ? groupedSources.value[activeGroupId.value].audios
       : [];
 });
+
+watch(videoRef, (newEl) => {
+  if (newEl && activeVideo.value && activeVideo.value.type === 'VIDEO') {
+    console.log("[Player] videoRef ready, initializing HLS");
+    hlsVideo = initHls(newEl, activeVideo.value, hlsVideo, true);
+    newEl.load();
+    newEl.play().catch(() => console.log("Autoplay waiting for user"));
+  }
+});
+
+// Наблюдаем за появлением audioRef в DOM
+watch(audioRef, (newEl) => {
+  if (newEl && activeAudio.value) {
+    console.log("[Player] audioRef ready, initializing HLS");
+    hlsAudio = initHls(newEl, activeAudio.value, hlsAudio, false);
+    newEl.load();
+  }
+});
 </script>
 
 <template>
@@ -385,6 +390,7 @@ const currentGroupAudios = computed(() => {
           ref="videoRef"
           class="w-full h-full"
           controls
+          preload
           playsinline
           crossorigin="anonymous"
           :muted="!!activeAudio"
