@@ -40,16 +40,17 @@ const fetchManifest = async () => {
 
     const groupKeys = Object.keys(groupedSources.value);
     if (groupKeys.length > 0) {
-      let targetGroup = groupKeys[0];
-      // Memory: Select the last used track group if it exists in the manifest
-      if (props.lastTrackGroup && groupedSources.value[props.lastTrackGroup]) {
-        targetGroup = props.lastTrackGroup;
-      }
-      selectGroup(targetGroup);
+      // Ищем ID группы, приводя всё к строке для надёжности сравнения
+      const rememberedId = groupKeys.find(k => String(k) === String(props.lastTrackGroup));
+      const targetGroup = rememberedId || groupKeys[0];
+
+      console.log(`[Player] Initial group selection: ${targetGroup} (Remembered: ${props.lastTrackGroup})`);
+      await selectGroup(targetGroup);
     }
 
     fetchExternalSources();
   } catch (e) {
+    console.error("Manifest error:", e);
     error.value = "Failed to load video manifest.";
   } finally {
     isLoading.value = false;
@@ -112,11 +113,11 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
   const startSec = (isVideo && !hasResumed.value && props.startProgress) ? parseInt(props.startProgress) / 1000 : -1;
 
   if (Hls.isSupported() && targetPath.endsWith('.m3u8')) {
-    const config = { enableWorker: true };
+    const config = {enableWorker: true};
 
     if (startSec > 0) {
-        config.startPosition = startSec;
-        hasResumed.value = true;
+      config.startPosition = startSec;
+      hasResumed.value = true;
     }
 
     const hls = new Hls(config);
@@ -136,7 +137,7 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
       mediaElement.addEventListener('loadedmetadata', () => {
         mediaElement.currentTime = startSec;
         hasResumed.value = true;
-      }, { once: true });
+      }, {once: true});
     }
     return null;
   } else {
@@ -146,36 +147,49 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
       mediaElement.addEventListener('loadedmetadata', () => {
         mediaElement.currentTime = startSec;
         hasResumed.value = true;
-      }, { once: true });
+      }, {once: true});
     }
     return null;
   }
 };
 
 const selectGroup = async (groupId) => {
-  const currentTime = videoRef.value ? videoRef.value.currentTime : 0;
-  const isPaused = videoRef.value ? videoRef.value.paused : true;
-
   activeGroupId.value = groupId;
   const group = groupedSources.value[groupId];
 
+  if (!group) return;
+
+  // 1. Устанавливаем данные источников
   activeVideo.value = group.video;
+  // По умолчанию берем первую аудиодорожку, если она есть
   activeAudio.value = group.audios.length > 0 ? group.audios[0] : null;
 
+  // 2. Ждем, когда Vue отрендерит <video> и <audio> теги из-за v-if
   await nextTick();
 
-  if (activeVideo.value && activeVideo.value.type === 'VIDEO') {
+  // 3. Инициализируем Видео
+  if (activeVideo.value && activeVideo.value.type === 'VIDEO' && videoRef.value) {
     hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo, true);
-    if (activeAudio.value) {
-      hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio, false);
-    }
 
-    // Resume position if switching versions mid-playback
-    if (hasResumed.value && currentTime > 0) {
-      videoRef.value.currentTime = currentTime;
-      if (!isPaused) videoRef.value.play().catch(e => console.warn(e));
-    }
+    // Принудительно запускаем загрузку и пробуем играть
+    videoRef.value.load();
+    videoRef.value.play().catch(() => {
+      console.log("[Player] Autoplay blocked, waiting for user interaction.");
+    });
+  }
 
+  // 4. Инициализируем Аудио
+  if (activeAudio.value && audioRef.value) {
+    // Гарантируем наличие активного пути качества
+    if (!activeAudio.value.active_path && activeAudio.value.qualities?.length > 0) {
+      activeAudio.value.active_path = activeAudio.value.qualities[0].storage_path;
+    }
+    hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio, false);
+    audioRef.value.load();
+  }
+
+  // 5. Запускаем движок синхронизации
+  if (activeVideo.value?.type === 'VIDEO') {
     startSyncEngine();
   } else {
     stopSyncEngine();
