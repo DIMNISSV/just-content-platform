@@ -102,6 +102,8 @@ const processSources = (sources) => {
 };
 
 const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
+  if (!mediaElement) return null;
+
   if (hlsInstanceVar) {
     hlsInstanceVar.destroy();
   }
@@ -110,15 +112,17 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
   const startSec = (isVideo && !hasResumed.value && props.startProgress) ? parseInt(props.startProgress) / 1000 : -1;
 
   if (Hls.isSupported() && targetPath.endsWith('.m3u8')) {
-    const config = {enableWorker: true};
+    const config = { enableWorker: true };
+
     if (startSec > 0) {
-      config.startPosition = startSec;
-      hasResumed.value = true;
+        config.startPosition = startSec;
+        hasResumed.value = true;
     }
 
     const hls = new Hls(config);
     hls.loadSource(targetPath);
     hls.attachMedia(mediaElement);
+
     hls.on(Hls.Events.ERROR, function (event, data) {
       if (data.fatal) {
         console.error("HLS Fatal Error:", data);
@@ -126,22 +130,23 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
       }
     });
     return hls;
-  } else if (mediaElement.canPlayType('application/vnd.apple.mpegurl')) {
+  } else if (mediaElement.canPlayType && mediaElement.canPlayType('application/vnd.apple.mpegurl')) {
     mediaElement.src = targetPath;
     if (startSec > 0) {
       mediaElement.addEventListener('loadedmetadata', () => {
         mediaElement.currentTime = startSec;
         hasResumed.value = true;
-      }, {once: true});
+      }, { once: true });
     }
     return null;
   } else {
+    // Обычный MP4/MP3/M4A
     mediaElement.src = targetPath;
     if (startSec > 0) {
       mediaElement.addEventListener('loadedmetadata', () => {
         mediaElement.currentTime = startSec;
         hasResumed.value = true;
-      }, {once: true});
+      }, { once: true });
     }
     return null;
   }
