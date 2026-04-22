@@ -85,9 +85,8 @@ class Command(BaseCommand):
         presets_data = [
             # Video Presets
             {
-                'name': '4K AV1 5M', 'type': 'VIDEO', 'codec': 'libaom-av1',
-                'bitrate': '5M', 'width': 3840, 'container': 'm3u8',
-                'video_preset': '', 'custom_post_args': '-strict experimental'
+                'name': '4K AV1 5M', 'type': 'VIDEO', 'codec': 'libsvtav1',
+                'bitrate': '5M', 'width': 3840, 'container': 'm3u8', 'video_preset': '8'
             },
             {
                 'name': 'FHD libx264 4M', 'type': 'VIDEO', 'codec': 'libx264',
