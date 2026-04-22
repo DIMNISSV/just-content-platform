@@ -144,7 +144,8 @@ def extract_stream_task(variant_id):
         if container == 'm3u8':
             cmd.extend(['-hls_time', '10', '-hls_playlist_type', 'vod'])
             if not (preset and preset.custom_post_args and '-hls_segment_filename' in preset.custom_post_args):
-                if v_codec in ['libaom-av1', 'libx265', 'hevc']:
+                m4s_f = ['av1', '265', 'hevc']
+                if any(target in v_codec.lower() for target in m4s_f):
                     cmd.extend([
                         '-hls_segment_type', 'fmp4',
                         '-hls_segment_filename', os.path.join(base_out_dir, 'segment_%03d.m4s')
