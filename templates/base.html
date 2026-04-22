@@ -18,7 +18,7 @@
         <a href="/" class="text-brand text-2xl font-black tracking-tighter">JUST CONTENT</a>
         <nav class="hidden md:flex gap-6">
             <a href="/" class="hover:text-brand transition-colors">Home</a>
-            <a href="#" class="hover:text-brand transition-colors">Catalog</a>
+            <a href="{% url 'catalog' %}" class="hover:text-brand transition-colors">Catalog</a>
         </nav>
         <div class="flex items-center gap-4">
             {% if user.is_authenticated %}

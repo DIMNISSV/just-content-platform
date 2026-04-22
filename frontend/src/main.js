@@ -1,9 +1,15 @@
 import './style.css';
 import {createApp} from 'vue';
 import VideoPlayer from './components/VideoPlayer.vue';
-import SyncWorkbench from './components/admin/SyncWorkbench.vue'; // Импорт Воркбенча
+import Catalog from './components/Catalog.vue';
+import SyncWorkbench from './components/admin/SyncWorkbench.vue';
 
 document.addEventListener('DOMContentLoaded', () => {
+    const catalogMount = document.getElementById('vue-catalog-mount');
+    if (catalogMount) {
+        const app = createApp(Catalog);
+        app.mount('#vue-catalog-mount');
+    }
     const playerMount = document.getElementById('vue-player-mount');
     if (playerMount) {
         const app = createApp(VideoPlayer, {

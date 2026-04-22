@@ -1,14 +1,14 @@
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
-from django.views.generic import ListView, DetailView
+from django.views.generic import ListView, DetailView, TemplateView
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
 from rest_framework.response import Response
 
 from media.models import Asset
-from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack
-from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer
+from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack, Genre
+from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, GenreSerializer
 
 
 class TitleViewSet(viewsets.ReadOnlyModelViewSet):
@@ -19,9 +19,22 @@ class TitleViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Title.objects.prefetch_related('genres').all().order_by('-created_at')
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'original_name']
-    # Разрешаем сортировку по рейтингу (для виджетов на Главной)
     ordering_fields = ['created_at', 'rating_score', 'release_year']
     permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+
+        # Ручная фильтрация
+        c_type = self.request.query_params.get('type')
+        genre = self.request.query_params.get('genre')
+
+        if c_type in [Title.Type.MOVIE, Title.Type.SERIES]:
+            qs = qs.filter(type=c_type)
+        if genre:
+            qs = qs.filter(genres__slug=genre)
+
+        return qs
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -411,3 +424,17 @@ def player_external_sources(request, content_type_str, object_id):
     external_sources = get_external_sources(external_ids)
 
     return Response({"sources": external_sources})
+
+
+class GenreViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Отдает список всех жанров для фильтров на фронтенде.
+    """
+    queryset = Genre.objects.all().order_by('name')
+    serializer_class = GenreSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    pagination_class = None  # Отключаем пагинацию, чтобы вернуть плоский массив
+
+
+class CatalogView(TemplateView):
+    template_name = 'content/catalog.html'
