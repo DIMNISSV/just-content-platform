@@ -4,7 +4,7 @@ from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
 
-from .models import RawMediaFile, MediaStream, Asset, TranscodingPreset, AssetVariant
+from .models import RawMediaFile, MediaStream, Asset, AssetVariant, TranscodingPreset
 from .tasks import extract_stream_task
 
 
@@ -71,36 +71,47 @@ class MediaStreamAdmin(admin.ModelAdmin):
             with transaction.atomic():
                 variant_ids = []
                 for stream in queryset:
-                    # 1. Создаем ЛОГИЧЕСКИЙ контейнер
-                    asset = Asset.objects.create(
+                    # 1. Пытаемся найти существующий логический Asset для этого стрима
+                    # или создаем новый, если это первая экстракция.
+                    asset, asset_created = Asset.objects.get_or_create(
                         source_stream=stream,
-                        type=stream.codec_type
+                        defaults={'type': stream.codec_type}
                     )
 
                     valid_presets = [p for p in presets if p.type == stream.codec_type]
 
-                    # 2. Создаем ФИЗИЧЕСКИЕ варианты
+                    # 2. Обрабатываем варианты
                     if not valid_presets:
-                        # Если пресеты не выбраны, создаем вариант "Original"
-                        variant = AssetVariant.objects.create(
+                        # Если пресеты не выбраны, создаем/обновляем вариант "Original"
+                        variant, _ = AssetVariant.objects.update_or_create(
                             asset=asset,
+                            preset=None,
                             quality_label="Original",
-                            status=AssetVariant.Status.PROCESSING  # Исправлено здесь
+                            defaults={
+                                'status': AssetVariant.Status.PROCESSING,
+                                'progress': 0,
+                                'storage_path': ''  # Сбрасываем путь, чтобы Celery записал новый
+                            }
                         )
                         variant_ids.append(variant.id)
                     else:
                         for preset in valid_presets:
-                            variant = AssetVariant.objects.create(
+                            # Для каждого выбранного пресета создаем или обновляем существующий вариант
+                            variant, _ = AssetVariant.objects.update_or_create(
                                 asset=asset,
                                 preset=preset,
-                                quality_label=preset.name,
-                                status=AssetVariant.Status.PROCESSING
+                                defaults={
+                                    'quality_label': preset.name,
+                                    'status': AssetVariant.Status.PROCESSING,
+                                    'progress': 0,
+                                    'storage_path': ''
+                                }
                             )
                             variant_ids.append(variant.id)
 
                 transaction.on_commit(lambda: start_tasks(variant_ids))
 
-            self.message_user(request, f"Extraction tasks started for {len(variant_ids)} variants.", messages.SUCCESS)
+            self.message_user(request, f"Extraction updated for {len(variant_ids)} variants.", messages.SUCCESS)
             return HttpResponseRedirect(request.get_full_path())
 
         context = {
