@@ -448,6 +448,7 @@ const currentGroupAudios = computed(() => {
        :class="{ 'cursor-hidden': !showControls && isPlaying }"
        ref="wrapperRef"
        @mousemove="resetControlsTimer"
+       @touchstart.passive="resetControlsTimer"
        @mouseleave="handleMouseLeave">
 
     <!-- Loading & Error States -->
