@@ -28,6 +28,7 @@ const activeGroupId = ref(null);
 const activeVideo = ref(null);
 const activeAudio = ref(null);
 const hasResumed = ref(false);
+const nextEpisodeId = ref(null);
 
 // State для UI контролов
 const isPlaying = ref(false);
@@ -37,7 +38,14 @@ const volume = ref(1);
 const isMuted = ref(false);
 const showControls = ref(true);
 const isFullscreen = ref(false);
-const showQualityMenu = ref(false);
+const showSettingsMenu = ref(false);
+const playbackRate = ref(1);
+
+// State для рейтинга озвучки
+const showTrackRating = ref(false);
+const hoverTrackScore = ref(0);
+const trackRatingMessage = ref('');
+const trackRatingSubmitting = ref(false);
 
 let hlsVideo = null;
 let hlsAudio = null;
@@ -45,7 +53,6 @@ let syncInterval = null;
 let telemetryInterval = null;
 let controlsTimeout = null;
 
-// Форматирование времени
 const formatTime = (timeInSeconds) => {
   if (isNaN(timeInSeconds)) return '00:00';
   const m = Math.floor(timeInSeconds / 60);
@@ -53,14 +60,14 @@ const formatTime = (timeInSeconds) => {
   return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
-// Скрытие контролов при бездействии
 const resetControlsTimer = () => {
   showControls.value = true;
   clearTimeout(controlsTimeout);
   controlsTimeout = setTimeout(() => {
     if (isPlaying.value) {
       showControls.value = false;
-      showQualityMenu.value = false;
+      showSettingsMenu.value = false;
+      showTrackRating.value = false;
     }
   }, 3000);
 };
@@ -69,12 +76,12 @@ const handleMouseLeave = () => {
   if (isPlaying.value) showControls.value = false;
 };
 
-// Получение манифеста
 const fetchManifest = async () => {
   isLoading.value = true;
   try {
     const response = await fetch(`/api/v1/player/manifest/${props.contentType}/${props.contentId}/`);
     manifest.value = await response.json();
+    nextEpisodeId.value = manifest.value.next_episode_id || null;
     processSources(manifest.value.sources);
 
     const groupKeys = Object.keys(groupedSources.value);
@@ -85,7 +92,6 @@ const fetchManifest = async () => {
     }
     fetchExternalSources();
   } catch (e) {
-    console.error("Manifest error:", e);
     error.value = "Failed to load video manifest.";
   } finally {
     isLoading.value = false;
@@ -106,7 +112,6 @@ const fetchExternalSources = async () => {
       }
     }
   } catch (e) {
-    console.warn("External sources warning:", e);
   }
 };
 
@@ -114,33 +119,22 @@ const processSources = (sources) => {
   const groups = {};
   sources.forEach(source => {
     if (source.type === 'EXTERNAL_PLAYER') {
-      groups[source.asset_id] = {
-        title: source.provider || 'External Source',
-        video: source,
-        audios: []
-      };
+      groups[source.asset_id] = {title: source.provider || 'External Source', video: source, audios: []};
       return;
     }
     const gid = source.sync_group_id;
     if (!gid) return;
-    if (!groups[gid]) {
-      groups[gid] = {title: source.group_title || 'Default', video: null, audios: []};
-    }
-    if (source.type === 'VIDEO') {
-      groups[gid].video = source;
-    } else if (source.type === 'AUDIO') {
-      groups[gid].audios.push(source);
-    }
+    if (!groups[gid]) groups[gid] = {title: source.group_title || 'Default', video: null, audios: []};
+
+    if (source.type === 'VIDEO') groups[gid].video = source;
+    else if (source.type === 'AUDIO') groups[gid].audios.push(source);
   });
   groupedSources.value = {...groupedSources.value, ...groups};
 };
 
 const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
   if (!mediaElement) return null;
-
-  if (hlsInstanceVar) {
-    hlsInstanceVar.destroy();
-  }
+  if (hlsInstanceVar) hlsInstanceVar.destroy();
 
   const targetPath = source.active_path || source.storage_path;
   const startSec = (isVideo && !hasResumed.value && props.startProgress) ? parseInt(props.startProgress) / 1000 : -1;
@@ -154,19 +148,10 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
     const hls = new Hls(config);
     hls.loadSource(targetPath);
     hls.attachMedia(mediaElement);
-    hls.on(Hls.Events.ERROR, function (event, data) {
+    hls.on(Hls.Events.ERROR, (event, data) => {
       if (data.fatal) console.error("HLS Fatal Error:", data);
     });
     return hls;
-  } else if (mediaElement.canPlayType && mediaElement.canPlayType('application/vnd.apple.mpegurl')) {
-    mediaElement.src = targetPath;
-    if (startSec > 0) {
-      mediaElement.addEventListener('loadedmetadata', () => {
-        mediaElement.currentTime = startSec;
-        hasResumed.value = true;
-      }, {once: true});
-    }
-    return null;
   } else {
     mediaElement.src = targetPath;
     if (startSec > 0) {
@@ -186,6 +171,8 @@ const selectGroup = async (groupId) => {
 
   activeVideo.value = null;
   activeAudio.value = null;
+  showTrackRating.value = false;
+  trackRatingMessage.value = '';
   await nextTick();
 
   activeVideo.value = group.video;
@@ -217,19 +204,16 @@ const selectGroup = async (groupId) => {
     activeAudio.value.active_path = activeAudio.value.qualities[0].storage_path;
   }
 
-  if (activeVideo.value?.type === 'VIDEO') {
-    startSyncEngine();
-  } else {
-    stopSyncEngine();
-  }
+  if (activeVideo.value?.type === 'VIDEO') startSyncEngine();
+  else stopSyncEngine();
 };
 
 watch(videoRef, (newEl) => {
   if (newEl && activeVideo.value && activeVideo.value.type === 'VIDEO') {
     hlsVideo = initHls(newEl, activeVideo.value, hlsVideo, true);
-    // Привязка громкости из стейта
     newEl.volume = volume.value;
     newEl.muted = isMuted.value;
+    newEl.playbackRate = playbackRate.value;
     newEl.load();
   }
 });
@@ -239,14 +223,14 @@ watch(audioRef, (newEl) => {
     hlsAudio = initHls(newEl, activeAudio.value, hlsAudio, false);
     newEl.volume = volume.value;
     newEl.muted = isMuted.value;
+    newEl.playbackRate = playbackRate.value;
     newEl.load();
   }
 });
 
 const selectAudioById = async (audioId) => {
-  if (audioId === 'original') {
-    await selectAudio(null);
-  } else {
+  if (audioId === 'original') await selectAudio(null);
+  else {
     const audio = currentGroupAudios.value.find(a => a.id === audioId);
     if (audio) await selectAudio(audio);
   }
@@ -264,13 +248,13 @@ const selectAudio = async (audioSource) => {
   } else {
     activeAudio.value = null;
   }
-
   await nextTick();
 
   if (activeAudio.value) {
     hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio, false);
     audioRef.value.volume = volume.value;
     audioRef.value.muted = isMuted.value;
+    audioRef.value.playbackRate = playbackRate.value;
   } else if (hlsAudio) {
     hlsAudio.destroy();
     hlsAudio = null;
@@ -286,9 +270,17 @@ const changeVideoQuality = async (path) => {
   const isP = videoRef.value.paused;
   activeVideo.value.active_path = path;
   hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo, true);
+  videoRef.value.playbackRate = playbackRate.value;
   videoRef.value.currentTime = cTime;
   if (!isP) videoRef.value.play().catch(e => console.warn(e));
-  showQualityMenu.value = false;
+  showSettingsMenu.value = false;
+};
+
+const changePlaybackRate = (rate) => {
+  playbackRate.value = rate;
+  if (videoRef.value) videoRef.value.playbackRate = rate;
+  if (audioRef.value) audioRef.value.playbackRate = rate;
+  showSettingsMenu.value = false;
 };
 
 const performSync = () => {
@@ -304,7 +296,7 @@ const performSync = () => {
   if (Math.abs(audio.currentTime - targetAudioTime) > 0.2) {
     audio.currentTime = targetAudioTime;
   }
-  if (audio.paused) audio.play().catch(e => console.warn("Audio play blocked", e));
+  if (audio.paused) audio.play().catch(e => console.warn(e));
 };
 
 const startSyncEngine = () => {
@@ -316,22 +308,15 @@ const stopSyncEngine = () => {
   if (syncInterval) clearInterval(syncInterval);
 };
 
-// Методы управления плеером
 const togglePlay = () => {
   if (!videoRef.value) return;
-  if (videoRef.value.paused) {
-    videoRef.value.play();
-  } else {
-    videoRef.value.pause();
-  }
+  if (videoRef.value.paused) videoRef.value.play();
+  else videoRef.value.pause();
 };
 
 const toggleFullscreen = () => {
-  if (!document.fullscreenElement) {
-    wrapperRef.value.requestFullscreen().catch(err => console.error(err));
-  } else {
-    document.exitFullscreen();
-  }
+  if (!document.fullscreenElement) wrapperRef.value.requestFullscreen().catch(err => console.error(err));
+  else document.exitFullscreen();
 };
 
 const skip = (seconds) => {
@@ -363,7 +348,6 @@ const toggleMute = () => {
   if (audioRef.value) audioRef.value.muted = isMuted.value;
 };
 
-// События Video
 const onTimeUpdate = () => {
   if (videoRef.value) currentTime.value = videoRef.value.currentTime;
 };
@@ -384,6 +368,38 @@ const handleFullscreenChange = () => {
   isFullscreen.value = !!document.fullscreenElement;
 };
 
+const goToNextEpisode = () => {
+  if (nextEpisodeId.value) {
+    window.location.href = `/watch/episode/${nextEpisodeId.value}/`;
+  }
+};
+
+// --- Оценка озвучки (Track Group) ---
+const rateTrackGroup = async (score) => {
+  if (trackRatingSubmitting.value || !activeGroupId.value) return;
+  trackRatingSubmitting.value = true;
+  trackRatingMessage.value = '';
+  try {
+    const res = await fetch(`/api/v1/player/rate-track/${activeGroupId.value}/`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': props.csrfToken},
+      body: JSON.stringify({score})
+    });
+    if (res.ok) {
+      showTrackRating.value = false;
+      trackRatingMessage.value = 'Rated!';
+      setTimeout(() => trackRatingMessage.value = '', 3000);
+    } else {
+      trackRatingMessage.value = 'Error';
+    }
+  } catch (e) {
+    trackRatingMessage.value = 'Error';
+  } finally {
+    trackRatingSubmitting.value = false;
+  }
+};
+
+// --- Телеметрия ---
 const sendTelemetry = async () => {
   if (!videoRef.value || isNaN(videoRef.value.duration)) return;
   const currentMs = Math.floor(videoRef.value.currentTime * 1000);
@@ -401,10 +417,7 @@ const sendTelemetry = async () => {
   try {
     await fetch('/api/v1/player/telemetry/', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': props.csrfToken
-      },
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': props.csrfToken},
       body: JSON.stringify({
         title_id: props.titleId,
         episode_id: props.episodeId || null,
@@ -457,7 +470,6 @@ const currentGroupAudios = computed(() => {
        @mousemove="resetControlsTimer"
        @mouseleave="handleMouseLeave">
 
-    <!-- Loaders & Errors -->
     <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
       <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-brand"></div>
     </div>
@@ -466,7 +478,6 @@ const currentGroupAudios = computed(() => {
       <span class="text-lg font-bold">{{ error }}</span>
     </div>
 
-    <!-- Media Area -->
     <div v-else class="w-full h-full">
       <video
           v-if="activeVideo && activeVideo.type === 'VIDEO'"
@@ -496,24 +507,33 @@ const currentGroupAudios = computed(() => {
       <audio v-if="activeAudio" ref="audioRef" class="hidden" preload="auto"></audio>
     </div>
 
-    <!-- Custom Controls Overlay (Only for Native Video) -->
+    <!-- Кнопка Next Episode (появляется за 15 сек до конца) -->
+    <button v-if="nextEpisodeId && duration && (duration - currentTime <= 15) && duration > 0"
+            @click="goToNextEpisode"
+            class="absolute bottom-24 right-4 bg-brand hover:bg-red-700 text-white font-bold py-3 px-6 rounded-lg shadow-2xl transition-transform hover:scale-105 z-30 pointer-events-auto flex items-center gap-2">
+      <span>Next Episode</span>
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"></path>
+      </svg>
+    </button>
+
+    <!-- Custom Controls Overlay -->
     <div v-if="activeVideo && activeVideo.type === 'VIDEO'"
-         class="absolute inset-0 flex flex-col justify-between transition-opacity duration-300 pointer-events-none"
+         class="absolute inset-0 flex flex-col justify-between transition-opacity duration-300 pointer-events-none z-20"
          :class="showControls ? 'opacity-100' : 'opacity-0'">
 
-      <!-- Top Bar: Audio & Track Group Selectors -->
+      <!-- Top Bar: Audio, Track Group & Rating -->
       <div
           class="p-4 bg-gradient-to-b from-black/80 to-transparent flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-        <!-- Audio Selection -->
         <div v-if="currentGroupAudios.length > 0"
-             class="pointer-events-auto flex items-center bg-gray-900/80 border border-gray-700 rounded overflow-hidden shadow-lg backdrop-blur">
+             class="pointer-events-auto flex items-center bg-gray-900/80 border border-gray-700 rounded shadow-lg backdrop-blur">
           <div class="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider border-r border-gray-700">
             Audio
           </div>
           <select
               class="bg-transparent text-white text-sm font-semibold outline-none px-2 py-1.5 cursor-pointer appearance-none"
               @change="e => selectAudioById(e.target.value)">
-            <option value="original" class="bg-gray-900">Original / Native</option>
+            <option value="original" class="bg-gray-900">Original</option>
             <option v-for="a in currentGroupAudios" :key="a.id" :value="a.id" class="bg-gray-900"
                     :selected="activeAudio?.id === a.id">
               {{ a.meta_info?.language || 'Dub' }}
@@ -521,9 +541,8 @@ const currentGroupAudios = computed(() => {
           </select>
         </div>
 
-        <!-- Version (Group) Selection -->
         <div
-            class="pointer-events-auto flex items-center bg-gray-900/80 border border-gray-700 rounded overflow-hidden shadow-lg backdrop-blur">
+            class="pointer-events-auto flex items-center bg-gray-900/80 border border-gray-700 rounded shadow-lg backdrop-blur relative">
           <div class="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider border-r border-gray-700">
             Version
           </div>
@@ -534,6 +553,33 @@ const currentGroupAudios = computed(() => {
               }}
             </option>
           </select>
+
+          <!-- Оценка Озвучки (Track Rating) -->
+          <div class="border-l border-gray-700 px-2 flex items-center">
+            <button @click="showTrackRating = !showTrackRating"
+                    class="text-yellow-500 hover:scale-125 transition-transform" title="Rate this version">
+              <svg class="w-5 h-5 drop-shadow" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                    d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
+              </svg>
+            </button>
+            <div v-if="showTrackRating"
+                 class="absolute top-full right-0 mt-2 bg-gray-900 border border-gray-700 p-2 rounded shadow-xl flex items-center gap-1 z-50"
+                 @mouseleave="showTrackRating = false">
+              <button v-for="s in 10" :key="s" @mouseenter="hoverTrackScore = s" @mouseleave="hoverTrackScore = 0"
+                      @click="rateTrackGroup(s)" class="text-gray-500 hover:text-yellow-500 transition-colors">
+                <svg class="w-5 h-5" :class="{'text-yellow-500': s <= hoverTrackScore}" fill="currentColor"
+                     viewBox="0 0 20 20">
+                  <path
+                      d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
+                </svg>
+              </button>
+            </div>
+            <span v-if="trackRatingMessage"
+                  class="absolute top-full right-0 mt-12 text-xs font-bold text-brand bg-black/80 px-2 py-1 rounded">{{
+                trackRatingMessage
+              }}</span>
+          </div>
         </div>
       </div>
 
@@ -541,36 +587,28 @@ const currentGroupAudios = computed(() => {
       <div
           class="bg-gradient-to-t from-black/90 via-black/50 to-transparent pt-12 pb-4 px-4 w-full pointer-events-auto">
 
-        <!-- Progress Bar -->
-        <div class="relative w-full h-1.5 bg-gray-600/50 rounded-full mb-4 cursor-pointer hover:h-2 transition-all"
-             ref="progressRef" @click="onProgressClick">
-          <!-- Buffered (Mocked for now, can be implemented via video.buffered) -->
-          <div class="absolute top-0 left-0 h-full bg-gray-400/50 rounded-full" style="width: 100%"></div>
-          <!-- Current Progress -->
+        <div
+            class="relative w-full h-1.5 bg-gray-600/50 rounded-full mb-4 cursor-pointer hover:h-2 transition-all group/prog"
+            ref="progressRef" @click="onProgressClick">
           <div class="absolute top-0 left-0 h-full bg-brand rounded-full relative"
                :style="{ width: duration ? (currentTime / duration * 100) + '%' : '0%' }">
             <div
-                class="absolute right-0 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow scale-0 group-hover:scale-100 transition-transform"></div>
+                class="absolute right-0 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow scale-0 group-hover/prog:scale-100 transition-transform"></div>
           </div>
         </div>
 
         <div class="flex items-center justify-between text-white">
-
-          <!-- Left Controls: Play, Skip, Volume, Time -->
           <div class="flex items-center gap-4">
             <button @click="togglePlay" class="hover:text-brand transition transform hover:scale-110">
-              <!-- Play Icon -->
               <svg v-if="!isPlaying" class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M4 4l12 6-12 6z"></path>
               </svg>
-              <!-- Pause Icon -->
               <svg v-else class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd"
                       d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
                       clip-rule="evenodd"></path>
               </svg>
             </button>
-
             <button @click="skip(-10)" class="text-gray-300 hover:text-white transition" title="Rewind 10s">
               <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -584,7 +622,6 @@ const currentGroupAudios = computed(() => {
               </svg>
             </button>
 
-            <!-- Volume Control -->
             <div class="flex items-center gap-2 group/vol relative">
               <button @click="toggleMute" class="text-gray-300 hover:text-white transition">
                 <svg v-if="isMuted || volume === 0" class="w-6 h-6" fill="none" stroke="currentColor"
@@ -603,18 +640,15 @@ const currentGroupAudios = computed(() => {
                      class="w-0 opacity-0 group-hover/vol:w-20 group-hover/vol:opacity-100 transition-all duration-300 cursor-pointer accent-brand">
             </div>
 
-            <!-- Time Display -->
             <div class="text-sm font-semibold text-gray-300 ml-2 font-mono">
               {{ formatTime(currentTime) }} / {{ formatTime(duration) }}
             </div>
           </div>
 
-          <!-- Right Controls: Settings & Fullscreen -->
           <div class="flex items-center gap-4 relative">
-            <!-- Settings Menu -->
-            <div class="relative">
-              <button @click="showQualityMenu = !showQualityMenu" class="text-gray-300 hover:text-white transition p-1"
-                      title="Settings">
+            <div class="relative" @mouseleave="showSettingsMenu = false">
+              <button @click="showSettingsMenu = !showSettingsMenu"
+                      class="text-gray-300 hover:text-white transition p-1" title="Settings">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
@@ -623,12 +657,20 @@ const currentGroupAudios = computed(() => {
                 </svg>
               </button>
 
-              <!-- Quality Dropdown -->
-              <div v-if="showQualityMenu"
-                   class="absolute bottom-full right-0 mb-4 w-40 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl py-2 overflow-hidden z-50 origin-bottom-right">
-                <div
-                    class="px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-gray-800">
-                  Quality
+              <div v-if="showSettingsMenu"
+                   class="absolute bottom-full right-0 mb-4 w-48 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl overflow-hidden z-50">
+                <!-- Speed -->
+                <div class="px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-widest bg-black/50">Speed</div>
+                <div class="flex justify-between px-3 py-2 border-b border-gray-800">
+                  <button v-for="r in[0.5, 1, 1.25, 1.5, 2]" :key="r" @click="changePlaybackRate(r)"
+                          class="px-1.5 py-1 text-xs rounded transition-colors font-bold"
+                          :class="playbackRate === r ? 'bg-brand text-white' : 'text-gray-400 hover:text-white'">
+                    {{ r }}x
+                  </button>
+                </div>
+
+                <!-- Quality -->
+                <div class="px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-widest bg-black/50">Quality
                 </div>
                 <button v-for="q in activeVideo.qualities" :key="q.variant_id"
                         @click="changeVideoQuality(q.storage_path)"
@@ -642,7 +684,6 @@ const currentGroupAudios = computed(() => {
               </div>
             </div>
 
-            <!-- Fullscreen Toggle -->
             <button @click="toggleFullscreen" class="text-gray-300 hover:text-white transition p-1" title="Fullscreen">
               <svg v-if="!isFullscreen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -662,7 +703,6 @@ const currentGroupAudios = computed(() => {
 </template>
 
 <style scoped>
-/* Убираем дефолтные стили скролла и селектов для кроссбраузерности */
 select {
   -webkit-appearance: none;
   -moz-appearance: none;

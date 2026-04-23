@@ -107,10 +107,8 @@ def player_manifest(request, content_type_str, object_id):
     for tg in track_groups:
         # 1. VIDEO QUALITIES
         if tg.video_asset:
-            # Сортируем по ширине пресета (от высокого качества к низкому)
             v_variants = tg.video_asset.variants.filter(status='READY').order_by('-preset__width')
             qualities = []
-
             for v in v_variants:
                 qualities.append({
                     "variant_id": str(v.id),
@@ -130,12 +128,11 @@ def player_manifest(request, content_type_str, object_id):
                     "active_path": qualities[0]["storage_path"]
                 })
 
-        # 2. AUDIO & SUBTITLE QUALITIES
+        # 2. AUDIO QUALITIES
         for extra in tg.additional_tracks.all():
             if extra.asset:
                 a_variants = extra.asset.variants.filter(status='READY')
                 qualities = []
-
                 for v in a_variants:
                     qualities.append({
                         "variant_id": str(v.id),
@@ -156,8 +153,33 @@ def player_manifest(request, content_type_str, object_id):
                         "active_path": qualities[0]["storage_path"]
                     })
 
+    # Вычисление следующей серии
+    next_episode_id = None
+    if content_type_str.lower() == 'episode':
+        try:
+            current_ep = Episode.objects.get(id=object_id)
+            # Ищем следующую серию в текущем сезоне
+            next_ep = Episode.objects.filter(
+                title=current_ep.title,
+                season_number=current_ep.season_number,
+                episode_number__gt=current_ep.episode_number
+            ).order_by('episode_number').first()
+
+            # Если нет в текущем, ищем первую серию следующего сезона
+            if not next_ep:
+                next_ep = Episode.objects.filter(
+                    title=current_ep.title,
+                    season_number__gt=current_ep.season_number
+                ).order_by('season_number', 'episode_number').first()
+
+            if next_ep:
+                next_episode_id = str(next_ep.id)
+        except Episode.DoesNotExist:
+            pass
+
     return Response({
         "content_id": str(object_id),
+        "next_episode_id": next_episode_id,
         "sources": sources
     })
 
