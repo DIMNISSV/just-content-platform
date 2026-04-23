@@ -41,7 +41,21 @@
                     {% endfor %}
                 </div>
 
-                <p class="text-gray-300 leading-relaxed">{{ title.description }}</p>
+                <p class="text-gray-300 leading-relaxed mb-6">{{ title.description }}</p>
+
+                <!-- Точка монтирования рейтинга -->
+                {% if user.is_authenticated %}
+                    <div id="vue-title-rating"
+                         data-title-id="{{ title.id }}"
+                         data-initial-score="{{ user_title_rating }}"
+                         data-csrf="{{ csrf_token }}">
+                    </div>
+                {% else %}
+                    <div class="text-sm text-gray-500 bg-gray-900 p-4 rounded-lg inline-block">
+                        <a href="{% url 'login' %}" class="text-brand hover:underline font-bold">Sign In</a> to rate
+                        this title.
+                    </div>
+                {% endif %}
             </div>
         </div>
         {% if title.type == 'SERIES' %}

@@ -6,6 +6,7 @@ import SyncWorkbench from './components/admin/SyncWorkbench.vue';
 import GlobalSearch from './components/GlobalSearch.vue';
 import ContinueWatching from './components/ContinueWatching.vue';
 import Recommendations from './components/Recommendations.vue';
+import TitleRating from './components/TitleRating.vue';
 
 document.addEventListener('DOMContentLoaded', () => {
     // Монтирование блоков главной страницы
@@ -13,11 +14,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (continueWatchingMount) {
         createApp(ContinueWatching).mount('#vue-continue-watching');
     }
-
     const recommendationsMount = document.getElementById('vue-recommendations');
     if (recommendationsMount) {
         createApp(Recommendations).mount('#vue-recommendations');
-    }    const globalSearchMount = document.getElementById('vue-global-search');
+    }
+    const globalSearchMount = document.getElementById('vue-global-search');
     if (globalSearchMount) {
         const app = createApp(GlobalSearch);
         app.mount('#vue-global-search');
@@ -26,6 +27,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (catalogMount) {
         const app = createApp(Catalog);
         app.mount('#vue-catalog-mount');
+    }
+    const titleRatingMount = document.getElementById('vue-title-rating');
+    if (titleRatingMount) {
+        createApp(TitleRating, {
+            titleId: titleRatingMount.dataset.titleId,
+            initialScore: titleRatingMount.dataset.initialScore,
+            csrfToken: titleRatingMount.dataset.csrf
+        }).mount('#vue-title-rating');
     }
     const playerMount = document.getElementById('vue-player-mount');
     if (playerMount) {

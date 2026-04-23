@@ -95,14 +95,13 @@ def player_manifest(request, content_type_str, object_id):
     else:
         return Response({"error": "invalid content type"}, status=400)
 
-    # Подтягиваем логические ассеты и их варианты
     track_groups = TrackGroup.objects.filter(
         content_type=ctype,
         object_id=object_id
     ).prefetch_related(
         'video_asset__variants__preset',
         'additional_tracks__asset__variants'
-    )
+    ).order_by('-rating_score')
 
     sources = []
     for tg in track_groups:
@@ -298,6 +297,7 @@ class WatchView(DetailView):
         context['last_track_group'] = ''
         context['last_audio_asset'] = ''
         context['last_quality'] = ''
+        context['user_title_rating'] = 0
 
         if self.request.user.is_authenticated:
             history = WatchHistory.objects.filter(user=self.request.user, title=self.object).first()
@@ -306,6 +306,10 @@ class WatchView(DetailView):
                 context['last_track_group'] = history.track_group_id or ''
                 context['last_audio_asset'] = str(history.last_audio_asset_id) if history.last_audio_asset_id else ''
                 context['last_quality'] = history.last_quality_label or ''
+
+            rating = TitleRating.objects.filter(user=self.request.user, title=self.object).first()
+            if rating:
+                context['user_title_rating'] = rating.score
 
         return context
 
@@ -377,6 +381,7 @@ class EpisodeWatchView(DetailView):
         context['last_track_group'] = ''
         context['last_audio_asset'] = ''
         context['last_quality'] = ''
+        context['user_title_rating'] = 0
 
         if self.request.user.is_authenticated:
             history = WatchHistory.objects.filter(user=self.request.user, title=title).first()
@@ -384,9 +389,12 @@ class EpisodeWatchView(DetailView):
                 context['last_track_group'] = history.track_group_id or ''
                 context['last_audio_asset'] = str(history.last_audio_asset_id) if history.last_audio_asset_id else ''
                 context['last_quality'] = history.last_quality_label or ''
-                # Восстанавливаем время, только если это та же самая серия
                 if history.episode_id == self.object.id:
                     context['start_progress'] = history.progress_ms
+
+            rating = TitleRating.objects.filter(user=self.request.user, title=title).first()
+            if rating:
+                context['user_title_rating'] = rating.score
 
         return context
 
