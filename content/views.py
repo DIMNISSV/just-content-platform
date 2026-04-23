@@ -475,22 +475,50 @@ class CatalogView(TemplateView):
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def content_tree_api(request):
-    """Возвращает иерархию для Upload Wizard"""
-    titles = Title.objects.prefetch_related('episodes').all()
+    """Возвращает глубокую иерархию: Title -> Episode -> TrackGroups -> Assets"""
+    titles = Title.objects.prefetch_related(
+        'episodes',
+        'track_groups__additional_tracks__asset',
+        'episodes__track_groups__additional_tracks__asset'
+    ).all()
+
     tree = []
     for t in titles:
+        # Для краткости примера логика для Title и Episode идентична
+        def serialize_groups(obj):
+            groups = []
+            for tg in obj.track_groups.all():
+                assets = [{
+                    'id': tg.video_asset.id,
+                    'type': 'VIDEO',
+                    'name': 'Base Video'
+                }]
+                for track in tg.additional_tracks.all():
+                    assets.append({
+                        'id': track.asset.id,
+                        'type': 'AUDIO',
+                        'name': track.language
+                    })
+                groups.append({
+                    'id': tg.id,
+                    'name': tg.name,
+                    'assets': assets
+                })
+            return groups
+
         episodes = []
         for ep in t.episodes.all():
             episodes.append({
                 'id': ep.id,
                 'name': str(ep),
-                'episode_number': ep.episode_number,
-                'season_number': ep.season_number
+                'track_groups': serialize_groups(ep)
             })
+
         tree.append({
             'id': t.id,
             'name': t.name,
             'type': t.type,
+            'track_groups': serialize_groups(t),
             'episodes': episodes
         })
     return Response(tree)
