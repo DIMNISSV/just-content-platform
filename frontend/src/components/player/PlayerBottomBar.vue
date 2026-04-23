@@ -40,11 +40,17 @@ const onProgressClick = (e) => {
   emit('seek', pos * props.duration);
 };
 
-const handleCustomRate = () => {
-  let val = parseFloat(localRate.value);
-  if (isNaN(val)) val = 1;
+watch(() => props.playbackRate, (newRate) => {
+  localRate.value = newRate;
+}, {immediate: true});
+
+const handleCustomRate = (e) => {
+  let val = parseFloat(e.target.value);
+  if (isNaN(val)) return;
+
   if (val < 0.1) val = 0.1;
   if (val > 16) val = 16;
+
   emit('update:playbackRate', val);
 };
 </script>
@@ -130,7 +136,7 @@ const handleCustomRate = () => {
                 <div class="flex items-center gap-2">
                   <span class="text-[10px] text-gray-500 font-bold uppercase">Custom:</span>
                   <input type="number" step="0.1" min="0.1" max="16"
-                         v-model="localRate"
+                         :value="localRate"
                          @input="handleCustomRate"
                          @keydown.stop
                          class="flex-grow bg-black border border-gray-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-brand">

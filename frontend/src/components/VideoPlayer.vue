@@ -108,7 +108,13 @@ const handleDoubleClick = (e) => {
 
 const onRateChange = () => {
   if (videoRef.value) {
-    playbackRate.value = videoRef.value.playbackRate;
+    const newRate = videoRef.value.playbackRate;
+    if (playbackRate.value !== newRate) {
+      playbackRate.value = newRate;
+      if (audioRef.value) {
+        audioRef.value.playbackRate = newRate;
+      }
+    }
   }
 };
 
@@ -311,11 +317,18 @@ const changeVideoQuality = async (path) => {
 };
 
 const changePlaybackRate = (rate) => {
-  playbackRate.value = rate;
-  if (videoRef.value) videoRef.value.playbackRate = rate;
-  if (audioRef.value) audioRef.value.playbackRate = rate;
-};
+  const newRate = parseFloat(rate);
+  if (isNaN(newRate)) return;
 
+  playbackRate.value = newRate;
+
+  if (videoRef.value) {
+    videoRef.value.playbackRate = newRate;
+  }
+  if (audioRef.value) {
+    audioRef.value.playbackRate = newRate;
+  }
+};
 const performSync = () => {
   if (!videoRef.value || !audioRef.value || !activeAudio.value) return;
   const video = videoRef.value;
