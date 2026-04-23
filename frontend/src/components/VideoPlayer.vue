@@ -95,11 +95,14 @@ const handleKeyDown = (e) => {
 
 const handleDoubleClick = (e) => {
   if (!wrapperRef.value) return;
+
   const rect = wrapperRef.value.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  if (x < rect.width / 3) {
+  const x = e.clientX - rect.left; // Позиция клика относительно левого края плеера
+  const width = rect.width;
+
+  if (x < width / 3) {
     skip(-10);
-  } else if (x > (rect.width / 3) * 2) {
+  } else if (x > (width / 3) * 2) {
     skip(10);
   } else {
     toggleFullscreen();
