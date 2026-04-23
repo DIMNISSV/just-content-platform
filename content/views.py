@@ -468,3 +468,27 @@ class GenreViewSet(viewsets.ReadOnlyModelViewSet):
 
 class CatalogView(TemplateView):
     template_name = 'content/catalog.html'
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def content_tree_api(request):
+    """Возвращает иерархию для Upload Wizard"""
+    titles = Title.objects.prefetch_related('episodes').all()
+    tree = []
+    for t in titles:
+        episodes = []
+        for ep in t.episodes.all():
+            episodes.append({
+                'id': ep.id,
+                'name': str(ep),
+                'episode_number': ep.episode_number,
+                'season_number': ep.season_number
+            })
+        tree.append({
+            'id': t.id,
+            'name': t.name,
+            'type': t.type,
+            'episodes': episodes
+        })
+    return Response(tree)

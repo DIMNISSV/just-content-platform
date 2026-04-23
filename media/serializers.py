@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Asset, AssetVariant
+from .models import Asset, AssetVariant, RawMediaFile
 
 
 class AssetVariantSerializer(serializers.ModelSerializer):
@@ -19,3 +19,9 @@ class AssetSerializer(serializers.ModelSerializer):
     class Meta:
         model = Asset
         fields = ['id', 'type', 'created_at', 'original_name', 'variants']
+
+
+class RawFileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RawMediaFile
+        fields = ['id', 'original_name', 'status', 'metadata', 'created_at']
