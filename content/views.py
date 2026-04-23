@@ -1,16 +1,18 @@
 from django.conf import settings
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.shortcuts import render
 from django.views.generic import ListView, DetailView, TemplateView
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
 from rest_framework.response import Response
 
-from media.models import Asset, RawMediaFile, MediaStream, AssetVariant
+from media.models import Asset, RawMediaFile, AssetVariant
+from media.tasks import extract_stream_task
 from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack, Genre
 from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, GenreSerializer
-from media.tasks import extract_stream_task
 
 
 class TitleViewSet(viewsets.ReadOnlyModelViewSet):
@@ -589,3 +591,17 @@ def assign_file_api(request):
         transaction.on_commit(lambda: [extract_stream_task.delay(vid) for vid in variant_ids])
 
     return Response({"status": "success", "track_group_id": track_group.id})
+
+
+@staff_member_required
+def upload_wizard_view(request):
+    """
+    Рендерит страницу Upload Wizard в рамках интерфейса Django Admin.
+    """
+    # Добавляем базовый контекст админки, чтобы работали стили шапки
+    context = {
+        'site_header': 'Just Content Admin',
+        'has_permission': True,
+        'is_popup': False,
+    }
+    return render(request, 'admin/upload_wizard.html', context)

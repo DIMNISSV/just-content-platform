@@ -1,0 +1,34 @@
+{% extends "admin/base_site.html" %}
+{% load django_vite %}
+
+{% block title %}Upload Wizard | Just Content Admin{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+{% vite_asset 'src/style.css' %}
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+{% vite_hmr_client %}
+{% vite_asset 'src/main.js' %}
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">Home</a>
+&rsaquo; Upload Wizard
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+<div class="module">
+  <h2>Just Content: Media Upload Wizard</h2>
+  <p>Drag and drop raw files onto episodes or specific versions to initiate automated extraction and transcoding.</p>
+
+  <!-- Точка монтирования Vue-компонента -->
+  <div id="vue-upload-wizard-mount" data-csrf="{{ csrf_token }}" class="mt-4"></div>
+</div>
+</div>
+{% endblock %}

@@ -7,6 +7,7 @@ import GlobalSearch from './components/GlobalSearch.vue';
 import ContinueWatching from './components/ContinueWatching.vue';
 import Recommendations from './components/Recommendations.vue';
 import TitleRating from './components/TitleRating.vue';
+import UploadWizard from './components/admin/UploadWizard.vue';
 
 document.addEventListener('DOMContentLoaded', () => {
     // Монтирование блоков главной страницы
@@ -60,5 +61,13 @@ document.addEventListener('DOMContentLoaded', () => {
             csrfToken: workbenchMount.dataset.csrf
         });
         app.mount('#vue-workbench-mount');
+    }
+
+    const uploadWizardMount = document.getElementById('vue-upload-wizard-mount');
+    if (uploadWizardMount) {
+        const app = createApp(UploadWizard, {
+            csrfToken: uploadWizardMount.dataset.csrf
+        });
+        app.mount('#vue-upload-wizard-mount');
     }
 });
