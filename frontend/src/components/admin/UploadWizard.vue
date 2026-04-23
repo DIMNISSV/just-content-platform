@@ -30,12 +30,34 @@ const handleDragStart = (e, fileId) => {
   e.dataTransfer.dropEffect = 'move';
 };
 
-const handleDrop = async (e, targetId, targetType) => {
+const expandedEpisodes = ref(new Set());
+const selectedFileForModal = ref(null); // Файл, который только что "бросили"
+
+const toggleEpisode = (id) => {
+  if (expandedEpisodes.value.has(id)) expandedEpisodes.value.delete(id);
+  else expandedEpisodes.value.add(id);
+};
+
+const handleDrop = (e, targetId, dropType) => {
   e.preventDefault();
   const fileId = e.dataTransfer.getData('fileId');
-  if (!fileId) return;
+  const file = rawFiles.value.find(f => f.id === fileId);
 
-  // Визуальный фидбек начала загрузки
+  if (!file) return;
+
+  // Вместо немедленной отправки, открываем модалку выбора стримов
+  selectedFileForModal.value = {
+    file: file,
+    targetId: targetId,
+    dropType: dropType // 'new_group' или 'existing_group'
+  };
+
+  showStreamModal.value = true;
+};
+
+const confirmStreamSelection = async (selectedStreams) => {
+  const context = selectedFileForModal.value;
+  showStreamModal.value = false;
   isLoading.value = true;
 
   try {
@@ -46,25 +68,24 @@ const handleDrop = async (e, targetId, targetType) => {
         'X-CSRFToken': props.csrfToken
       },
       body: JSON.stringify({
-        raw_file_id: fileId,
-        target_id: targetId,
-        target_type: targetType
+        raw_file_id: context.file.id,
+        target_id: context.targetId,
+        drop_type: context.dropType,
+        target_type: context.targetType, // Передаем, если это новый эпизод
+        selected_streams: selectedStreams
       })
     });
 
     if (res.ok) {
-      alert("File assigned and extraction started!");
-      // Можно пометить файл как использованный локально
-      const file = rawFiles.value.find(f => f.id === fileId);
-      if (file) file.is_assigned = true;
+      // Обновляем всё дерево, чтобы увидеть изменения
+      await fetchData();
     } else {
       const err = await res.json();
       alert("Error: " + err.error);
     }
-  } catch (err) {
-    console.error(err);
   } finally {
     isLoading.value = false;
+    selectedFileForModal.value = null;
   }
 };
 
