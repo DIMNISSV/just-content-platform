@@ -5,6 +5,7 @@ import Hls from 'hls.js';
 import PlayerTopBar from './player/PlayerTopBar.vue';
 import PlayerBottomBar from './player/PlayerBottomBar.vue';
 import PlayerNextEpisode from './player/PlayerNextEpisode.vue';
+import PlayerSkipButton from "./player/PlayerSkipButton.vue";
 
 const props = defineProps({
   contentId: {type: String, required: true},
@@ -65,6 +66,50 @@ const resetControlsTimer = () => {
 
 const handleMouseLeave = () => {
   if (isPlaying.value) showControls.value = false;
+};
+
+const handleKeyDown = (e) => {
+  if (e.target.tagName === 'INPUT') return;
+
+  switch (e.key.toLowerCase()) {
+    case ' ':
+    case 'k':
+      e.preventDefault();
+      togglePlay();
+      break;
+    case 'f':
+      e.preventDefault();
+      toggleFullscreen();
+      break;
+    case 'm':
+      toggleMute();
+      break;
+    case 'arrowright':
+      skip(10);
+      break;
+    case 'arrowleft':
+      skip(-10);
+      break;
+  }
+};
+
+const handleDoubleClick = (e) => {
+  if (!wrapperRef.value) return;
+  const rect = wrapperRef.value.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  if (x < rect.width / 3) {
+    skip(-10);
+  } else if (x > (rect.width / 3) * 2) {
+    skip(10);
+  } else {
+    toggleFullscreen();
+  }
+};
+
+const onRateChange = () => {
+  if (videoRef.value) {
+    playbackRate.value = videoRef.value.playbackRate;
+  }
 };
 
 const fetchManifest = async () => {
@@ -426,6 +471,7 @@ onMounted(() => {
   fetchManifest();
   startTelemetry();
   document.addEventListener('fullscreenchange', handleFullscreenChange);
+  window.addEventListener('keydown', handleKeyDown);
 });
 
 onBeforeUnmount(() => {
@@ -433,6 +479,7 @@ onBeforeUnmount(() => {
   stopTelemetry();
   sendTelemetry();
   document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  window.removeEventListener('keydown', handleKeyDown);
   if (hlsVideo) hlsVideo.destroy();
   if (hlsAudio) hlsAudio.destroy();
 });
@@ -470,7 +517,8 @@ const currentGroupAudios = computed(() => {
           crossorigin="anonymous"
           :muted="!!activeAudio || isMuted"
           @click="togglePlay"
-          @dblclick="toggleFullscreen"
+          @dblclick="handleDoubleClick"
+          @ratechange="onRateChange"
           @timeupdate="onTimeUpdate"
           @loadedmetadata="onLoadedMetadata"
           @play="onPlay"
@@ -506,6 +554,12 @@ const currentGroupAudios = computed(() => {
           @update:active-group-id="selectGroup"
           @select-audio="selectAudioById"
           @rate-track="rateTrackGroup"
+      />
+
+      <PlayerSkipButton
+          :current-time="currentTime"
+          :duration="duration"
+          @skip="seek"
       />
 
       <!-- Next Episode Popup -->
