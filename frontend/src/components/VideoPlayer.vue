@@ -17,6 +17,7 @@ const props = defineProps({
 const videoRef = ref(null);
 const audioRef = ref(null);
 const wrapperRef = ref(null);
+const progressRef = ref(null);
 
 const isLoading = ref(true);
 const manifest = ref(null);
@@ -28,11 +29,47 @@ const activeVideo = ref(null);
 const activeAudio = ref(null);
 const hasResumed = ref(false);
 
+// State для UI контролов
+const isPlaying = ref(false);
+const currentTime = ref(0);
+const duration = ref(0);
+const volume = ref(1);
+const isMuted = ref(false);
+const showControls = ref(true);
+const isFullscreen = ref(false);
+const showQualityMenu = ref(false);
+
 let hlsVideo = null;
 let hlsAudio = null;
 let syncInterval = null;
 let telemetryInterval = null;
+let controlsTimeout = null;
 
+// Форматирование времени
+const formatTime = (timeInSeconds) => {
+  if (isNaN(timeInSeconds)) return '00:00';
+  const m = Math.floor(timeInSeconds / 60);
+  const s = Math.floor(timeInSeconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
+// Скрытие контролов при бездействии
+const resetControlsTimer = () => {
+  showControls.value = true;
+  clearTimeout(controlsTimeout);
+  controlsTimeout = setTimeout(() => {
+    if (isPlaying.value) {
+      showControls.value = false;
+      showQualityMenu.value = false;
+    }
+  }, 3000);
+};
+
+const handleMouseLeave = () => {
+  if (isPlaying.value) showControls.value = false;
+};
+
+// Получение манифеста
 const fetchManifest = async () => {
   isLoading.value = true;
   try {
@@ -44,10 +81,8 @@ const fetchManifest = async () => {
     if (groupKeys.length > 0) {
       const rememberedId = groupKeys.find(k => String(k) === String(props.lastTrackGroup));
       const targetGroup = rememberedId || groupKeys[0];
-
       await selectGroup(targetGroup);
     }
-
     fetchExternalSources();
   } catch (e) {
     console.error("Manifest error:", e);
@@ -116,15 +151,11 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
       config.startPosition = startSec;
       hasResumed.value = true;
     }
-
     const hls = new Hls(config);
     hls.loadSource(targetPath);
     hls.attachMedia(mediaElement);
     hls.on(Hls.Events.ERROR, function (event, data) {
-      if (data.fatal) {
-        console.error("HLS Fatal Error:", data);
-        error.value = "Playback error occurred.";
-      }
+      if (data.fatal) console.error("HLS Fatal Error:", data);
     });
     return hls;
   } else if (mediaElement.canPlayType && mediaElement.canPlayType('application/vnd.apple.mpegurl')) {
@@ -151,17 +182,14 @@ const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
 const selectGroup = async (groupId) => {
   activeGroupId.value = groupId;
   const group = groupedSources.value[groupId];
-
   if (!group) return;
 
   activeVideo.value = null;
   activeAudio.value = null;
-
   await nextTick();
 
   activeVideo.value = group.video;
 
-  // Восстановление Аудио-дорожки
   if (group.audios.length > 0) {
     if (props.lastAudioAsset) {
       const rememberedAudio = group.audios.find(a => a.asset_id === props.lastAudioAsset);
@@ -173,14 +201,11 @@ const selectGroup = async (groupId) => {
     activeAudio.value = null;
   }
 
-  // Восстановление Видео-качества
   if (activeVideo.value && activeVideo.value.qualities?.length > 0) {
     let matchedQuality = null;
     if (props.lastQuality) {
       matchedQuality = activeVideo.value.qualities.find(q => q.label === props.lastQuality);
     }
-
-    // Перезаписываем дефолтный путь от бэкенда, если нашли сохраненное качество
     if (matchedQuality) {
       activeVideo.value.active_path = matchedQuality.storage_path;
     } else if (!activeVideo.value.active_path) {
@@ -188,7 +213,6 @@ const selectGroup = async (groupId) => {
     }
   }
 
-  // Гарантируем active_path для аудио
   if (activeAudio.value && !activeAudio.value.active_path && activeAudio.value.qualities?.length > 0) {
     activeAudio.value.active_path = activeAudio.value.qualities[0].storage_path;
   }
@@ -203,6 +227,9 @@ const selectGroup = async (groupId) => {
 watch(videoRef, (newEl) => {
   if (newEl && activeVideo.value && activeVideo.value.type === 'VIDEO') {
     hlsVideo = initHls(newEl, activeVideo.value, hlsVideo, true);
+    // Привязка громкости из стейта
+    newEl.volume = volume.value;
+    newEl.muted = isMuted.value;
     newEl.load();
   }
 });
@@ -210,13 +237,24 @@ watch(videoRef, (newEl) => {
 watch(audioRef, (newEl) => {
   if (newEl && activeAudio.value) {
     hlsAudio = initHls(newEl, activeAudio.value, hlsAudio, false);
+    newEl.volume = volume.value;
+    newEl.muted = isMuted.value;
     newEl.load();
   }
 });
 
+const selectAudioById = async (audioId) => {
+  if (audioId === 'original') {
+    await selectAudio(null);
+  } else {
+    const audio = currentGroupAudios.value.find(a => a.id === audioId);
+    if (audio) await selectAudio(audio);
+  }
+};
+
 const selectAudio = async (audioSource) => {
-  const currentTime = videoRef.value.currentTime;
-  const isPlaying = !videoRef.value.paused;
+  const cTime = videoRef.value.currentTime;
+  const isP = !videoRef.value.paused;
 
   if (audioSource) {
     if (!audioSource.active_path && audioSource.qualities?.length > 0) {
@@ -231,65 +269,42 @@ const selectAudio = async (audioSource) => {
 
   if (activeAudio.value) {
     hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio, false);
+    audioRef.value.volume = volume.value;
+    audioRef.value.muted = isMuted.value;
   } else if (hlsAudio) {
     hlsAudio.destroy();
     hlsAudio = null;
   }
 
-  videoRef.value.currentTime = currentTime;
-  if (isPlaying) videoRef.value.play();
+  videoRef.value.currentTime = cTime;
+  if (isP) videoRef.value.play();
 };
 
 const changeVideoQuality = async (path) => {
   if (!activeVideo.value || activeVideo.value.active_path === path) return;
-
-  const currentTime = videoRef.value.currentTime;
-  const isPaused = videoRef.value.paused;
+  const cTime = videoRef.value.currentTime;
+  const isP = videoRef.value.paused;
   activeVideo.value.active_path = path;
-
   hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo, true);
-
-  videoRef.value.currentTime = currentTime;
-  if (!isPaused) videoRef.value.play().catch(e => console.warn(e));
-};
-
-const changeAudioQuality = async (path) => {
-  if (!audioRef.value || activeAudio.value.active_path === path) return;
-
-  const currentTime = videoRef.value.currentTime;
-  const isPaused = videoRef.value.paused;
-
-  activeAudio.value.active_path = path;
-  hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio, false);
-
-  const offsetSeconds = (activeAudio.value.offset_ms || 0) / 1000;
-  audioRef.value.currentTime = currentTime - offsetSeconds;
-
-  if (!isPaused) audioRef.value.play().catch(e => console.warn("Audio resume failed", e));
+  videoRef.value.currentTime = cTime;
+  if (!isP) videoRef.value.play().catch(e => console.warn(e));
+  showQualityMenu.value = false;
 };
 
 const performSync = () => {
   if (!videoRef.value || !audioRef.value || !activeAudio.value) return;
-
   const video = videoRef.value;
   const audio = audioRef.value;
-
   if (video.paused || video.waiting || video.seeking) {
     if (!audio.paused) audio.pause();
     return;
   }
-
   const offsetSeconds = activeAudio.value.offset_ms / 1000;
   const targetAudioTime = video.currentTime - offsetSeconds;
-
-  const diff = Math.abs(audio.currentTime - targetAudioTime);
-  if (diff > 0.2) {
+  if (Math.abs(audio.currentTime - targetAudioTime) > 0.2) {
     audio.currentTime = targetAudioTime;
   }
-
-  if (audio.paused) {
-    audio.play().catch(e => console.warn("Audio play blocked", e));
-  }
+  if (audio.paused) audio.play().catch(e => console.warn("Audio play blocked", e));
 };
 
 const startSyncEngine = () => {
@@ -301,19 +316,81 @@ const stopSyncEngine = () => {
   if (syncInterval) clearInterval(syncInterval);
 };
 
-const handleVideoEvents = () => {
+// Методы управления плеером
+const togglePlay = () => {
+  if (!videoRef.value) return;
+  if (videoRef.value.paused) {
+    videoRef.value.play();
+  } else {
+    videoRef.value.pause();
+  }
+};
+
+const toggleFullscreen = () => {
+  if (!document.fullscreenElement) {
+    wrapperRef.value.requestFullscreen().catch(err => console.error(err));
+  } else {
+    document.exitFullscreen();
+  }
+};
+
+const skip = (seconds) => {
+  if (videoRef.value) {
+    videoRef.value.currentTime += seconds;
+    performSync();
+  }
+};
+
+const onProgressClick = (e) => {
+  if (!progressRef.value || !videoRef.value || !duration.value) return;
+  const rect = progressRef.value.getBoundingClientRect();
+  const pos = (e.clientX - rect.left) / rect.width;
+  videoRef.value.currentTime = pos * duration.value;
   performSync();
 };
 
-const sendTelemetry = async () => {
-  if (!videoRef.value) return;
+const handleVolumeChange = (e) => {
+  const val = parseFloat(e.target.value);
+  volume.value = val;
+  if (videoRef.value) videoRef.value.volume = val;
+  if (audioRef.value) audioRef.value.volume = val;
+  isMuted.value = val === 0;
+};
 
+const toggleMute = () => {
+  isMuted.value = !isMuted.value;
+  if (videoRef.value) videoRef.value.muted = isMuted.value;
+  if (audioRef.value) audioRef.value.muted = isMuted.value;
+};
+
+// События Video
+const onTimeUpdate = () => {
+  if (videoRef.value) currentTime.value = videoRef.value.currentTime;
+};
+const onLoadedMetadata = () => {
+  if (videoRef.value) duration.value = videoRef.value.duration;
+};
+const onPlay = () => {
+  isPlaying.value = true;
+  resetControlsTimer();
+};
+const onPause = () => {
+  isPlaying.value = false;
+  showControls.value = true;
+  if (audioRef.value) audioRef.value.pause();
+};
+
+const handleFullscreenChange = () => {
+  isFullscreen.value = !!document.fullscreenElement;
+};
+
+const sendTelemetry = async () => {
+  if (!videoRef.value || isNaN(videoRef.value.duration)) return;
   const currentMs = Math.floor(videoRef.value.currentTime * 1000);
-  const duration = videoRef.value.duration || 0;
-  const isCompleted = duration > 0 && (videoRef.value.currentTime / duration) > 0.95;
+  const dur = videoRef.value.duration || 0;
+  const isCompleted = dur > 0 && (videoRef.value.currentTime / dur) > 0.95;
   const tGroupId = parseInt(activeGroupId.value);
 
-  // Собираем текущие данные о качестве и аудио
   let currentQualityLabel = null;
   if (activeVideo.value && activeVideo.value.qualities) {
     const q = activeVideo.value.qualities.find(q => q.storage_path === activeVideo.value.active_path);
@@ -339,16 +416,13 @@ const sendTelemetry = async () => {
       })
     });
   } catch (e) {
-    console.warn("Telemetry ping failed", e);
   }
 };
 
 const startTelemetry = () => {
   if (telemetryInterval) clearInterval(telemetryInterval);
   telemetryInterval = setInterval(() => {
-    if (videoRef.value && !videoRef.value.paused) {
-      sendTelemetry();
-    }
+    if (videoRef.value && !videoRef.value.paused) sendTelemetry();
   }, 10000);
 };
 
@@ -356,63 +430,59 @@ const stopTelemetry = () => {
   if (telemetryInterval) clearInterval(telemetryInterval);
 };
 
-const toggleFullscreen = () => {
-  if (!document.fullscreenElement) {
-    wrapperRef.value.requestFullscreen().catch(err => console.error(err));
-  } else {
-    document.exitFullscreen();
-  }
-};
-
 onMounted(() => {
   fetchManifest();
   startTelemetry();
+  document.addEventListener('fullscreenchange', handleFullscreenChange);
 });
 
 onBeforeUnmount(() => {
   stopSyncEngine();
   stopTelemetry();
   sendTelemetry();
+  document.removeEventListener('fullscreenchange', handleFullscreenChange);
   if (hlsVideo) hlsVideo.destroy();
   if (hlsAudio) hlsAudio.destroy();
 });
 
 const currentGroupAudios = computed(() => {
   return activeGroupId.value && groupedSources.value[activeGroupId.value]
-      ? groupedSources.value[activeGroupId.value].audios
-      : [];
+      ? groupedSources.value[activeGroupId.value].audios : [];
 });
 </script>
 
 <template>
-  <div class="video-player-container" ref="wrapperRef">
-    <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center bg-black z-20">
+  <div class="relative w-full h-full aspect-video bg-black rounded-xl overflow-hidden group select-none"
+       ref="wrapperRef"
+       @mousemove="resetControlsTimer"
+       @mouseleave="handleMouseLeave">
+
+    <!-- Loaders & Errors -->
+    <div v-if="isLoading" class="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
       <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-brand"></div>
     </div>
-
     <div v-else-if="error"
          class="absolute inset-0 flex flex-col items-center justify-center bg-black text-gray-400 z-20">
-      <svg class="w-12 h-12 mb-4 text-brand" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-      </svg>
       <span class="text-lg font-bold">{{ error }}</span>
     </div>
 
-    <div v-else class="relative w-full h-full bg-black group">
-
+    <!-- Media Area -->
+    <div v-else class="w-full h-full">
       <video
           v-if="activeVideo && activeVideo.type === 'VIDEO'"
           ref="videoRef"
-          class="w-full h-full"
-          controls
+          class="w-full h-full cursor-pointer"
           playsinline
           crossorigin="anonymous"
-          :muted="!!activeAudio"
-          @play="handleVideoEvents"
-          @pause="handleVideoEvents"
-          @seeked="handleVideoEvents"
-          @waiting="handleVideoEvents"
+          :muted="!!activeAudio || isMuted"
+          @click="togglePlay"
+          @dblclick="toggleFullscreen"
+          @timeupdate="onTimeUpdate"
+          @loadedmetadata="onLoadedMetadata"
+          @play="onPlay"
+          @pause="onPause"
+          @seeking="performSync"
+          @waiting="performSync"
       ></video>
 
       <iframe
@@ -424,103 +494,201 @@ const currentGroupAudios = computed(() => {
       ></iframe>
 
       <audio v-if="activeAudio" ref="audioRef" class="hidden" preload="auto"></audio>
+    </div>
 
-      <!-- TOP OVERLAY -->
+    <!-- Custom Controls Overlay (Only for Native Video) -->
+    <div v-if="activeVideo && activeVideo.type === 'VIDEO'"
+         class="absolute inset-0 flex flex-col justify-between transition-opacity duration-300 pointer-events-none"
+         :class="showControls ? 'opacity-100' : 'opacity-0'">
+
+      <!-- Top Bar: Audio & Track Group Selectors -->
       <div
-          class="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex justify-between items-start pointer-events-none">
+          class="p-4 bg-gradient-to-b from-black/80 to-transparent flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+        <!-- Audio Selection -->
+        <div v-if="currentGroupAudios.length > 0"
+             class="pointer-events-auto flex items-center bg-gray-900/80 border border-gray-700 rounded overflow-hidden shadow-lg backdrop-blur">
+          <div class="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider border-r border-gray-700">
+            Audio
+          </div>
+          <select
+              class="bg-transparent text-white text-sm font-semibold outline-none px-2 py-1.5 cursor-pointer appearance-none"
+              @change="e => selectAudioById(e.target.value)">
+            <option value="original" class="bg-gray-900">Original / Native</option>
+            <option v-for="a in currentGroupAudios" :key="a.id" :value="a.id" class="bg-gray-900"
+                    :selected="activeAudio?.id === a.id">
+              {{ a.meta_info?.language || 'Dub' }}
+            </option>
+          </select>
+        </div>
 
-        <div class="pointer-events-auto flex flex-col gap-2">
-          <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Version</label>
-          <div class="flex flex-wrap gap-2">
-            <button
-                v-for="(group, id) in groupedSources" :key="id" @click="selectGroup(id)"
-                :class="['px-3 py-1 text-sm rounded transition-colors border', activeGroupId === id ? 'bg-brand border-brand text-white' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']"
-            >
-              {{ group.title }}
+        <!-- Version (Group) Selection -->
+        <div
+            class="pointer-events-auto flex items-center bg-gray-900/80 border border-gray-700 rounded overflow-hidden shadow-lg backdrop-blur">
+          <div class="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider border-r border-gray-700">
+            Version
+          </div>
+          <select v-model="activeGroupId" @change="selectGroup(activeGroupId)"
+                  class="bg-transparent text-white text-sm font-semibold outline-none px-2 py-1.5 cursor-pointer appearance-none max-w-[200px] truncate">
+            <option v-for="(group, id) in groupedSources" :key="id" :value="id" class="bg-gray-900">{{
+                group.title
+              }}
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Bottom Bar: Playback Controls -->
+      <div
+          class="bg-gradient-to-t from-black/90 via-black/50 to-transparent pt-12 pb-4 px-4 w-full pointer-events-auto">
+
+        <!-- Progress Bar -->
+        <div class="relative w-full h-1.5 bg-gray-600/50 rounded-full mb-4 cursor-pointer hover:h-2 transition-all"
+             ref="progressRef" @click="onProgressClick">
+          <!-- Buffered (Mocked for now, can be implemented via video.buffered) -->
+          <div class="absolute top-0 left-0 h-full bg-gray-400/50 rounded-full" style="width: 100%"></div>
+          <!-- Current Progress -->
+          <div class="absolute top-0 left-0 h-full bg-brand rounded-full relative"
+               :style="{ width: duration ? (currentTime / duration * 100) + '%' : '0%' }">
+            <div
+                class="absolute right-0 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow scale-0 group-hover:scale-100 transition-transform"></div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between text-white">
+
+          <!-- Left Controls: Play, Skip, Volume, Time -->
+          <div class="flex items-center gap-4">
+            <button @click="togglePlay" class="hover:text-brand transition transform hover:scale-110">
+              <!-- Play Icon -->
+              <svg v-if="!isPlaying" class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M4 4l12 6-12 6z"></path>
+              </svg>
+              <!-- Pause Icon -->
+              <svg v-else class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z"
+                      clip-rule="evenodd"></path>
+              </svg>
+            </button>
+
+            <button @click="skip(-10)" class="text-gray-300 hover:text-white transition" title="Rewind 10s">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z"></path>
+              </svg>
+            </button>
+            <button @click="skip(10)" class="text-gray-300 hover:text-white transition" title="Skip 10s">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.334-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.334-4z"></path>
+              </svg>
+            </button>
+
+            <!-- Volume Control -->
+            <div class="flex items-center gap-2 group/vol relative">
+              <button @click="toggleMute" class="text-gray-300 hover:text-white transition">
+                <svg v-if="isMuted || volume === 0" class="w-6 h-6" fill="none" stroke="currentColor"
+                     viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"></path>
+                </svg>
+                <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path>
+                </svg>
+              </button>
+              <input type="range" min="0" max="1" step="0.05" :value="isMuted ? 0 : volume" @input="handleVolumeChange"
+                     class="w-0 opacity-0 group-hover/vol:w-20 group-hover/vol:opacity-100 transition-all duration-300 cursor-pointer accent-brand">
+            </div>
+
+            <!-- Time Display -->
+            <div class="text-sm font-semibold text-gray-300 ml-2 font-mono">
+              {{ formatTime(currentTime) }} / {{ formatTime(duration) }}
+            </div>
+          </div>
+
+          <!-- Right Controls: Settings & Fullscreen -->
+          <div class="flex items-center gap-4 relative">
+            <!-- Settings Menu -->
+            <div class="relative">
+              <button @click="showQualityMenu = !showQualityMenu" class="text-gray-300 hover:text-white transition p-1"
+                      title="Settings">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+              </button>
+
+              <!-- Quality Dropdown -->
+              <div v-if="showQualityMenu"
+                   class="absolute bottom-full right-0 mb-4 w-40 bg-gray-900 border border-gray-700 rounded-lg shadow-2xl py-2 overflow-hidden z-50 origin-bottom-right">
+                <div
+                    class="px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-gray-800">
+                  Quality
+                </div>
+                <button v-for="q in activeVideo.qualities" :key="q.variant_id"
+                        @click="changeVideoQuality(q.storage_path)"
+                        class="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition flex items-center justify-between">
+                  {{ q.label }}
+                  <svg v-if="activeVideo.active_path === q.storage_path" class="w-4 h-4 text-brand" fill="none"
+                       stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <!-- Fullscreen Toggle -->
+            <button @click="toggleFullscreen" class="text-gray-300 hover:text-white transition p-1" title="Fullscreen">
+              <svg v-if="!isFullscreen" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>
+              </svg>
+              <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M4 14h6m0 0v6m0-6l-7 7m17-11h-6m0 0V4m0 6l7-7M4 10h6m0 0V4m0 6l-7-7m17 11h-6m0 0v6m0-6l7 7"></path>
+              </svg>
             </button>
           </div>
-        </div>
 
-        <div class="flex gap-2">
-          <button @click="toggleFullscreen"
-                  class="pointer-events-auto text-white hover:text-brand bg-black/50 p-2 rounded">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                    d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path>
-            </svg>
-          </button>
         </div>
       </div>
-
-      <!-- BOTTOM OVERLAY -->
-      <div
-          class="absolute bottom-16 left-0 right-0 px-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none flex flex-col gap-4">
-
-        <!-- 1. Ряд выбора дорожки и её качества -->
-        <div v-if="currentGroupAudios.length > 0" class="flex justify-between items-end">
-          <div class="pointer-events-auto flex flex-col gap-2">
-            <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Audio Track</label>
-            <div class="flex flex-wrap gap-2">
-              <button @click="selectAudio(null)"
-                      :class="['px-3 py-1 text-sm rounded transition-colors border', activeAudio === null ? 'bg-white text-black border-white' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']">
-                Original
-              </button>
-              <button v-for="audio in currentGroupAudios" :key="audio.id" @click="selectAudio(audio)"
-                      :class="['px-3 py-1 text-sm rounded transition-colors border', activeAudio?.id === audio.id ? 'bg-white text-black border-white' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']">
-                {{ audio.meta_info?.language || 'Dub' }}
-              </button>
-            </div>
-          </div>
-
-          <div v-if="activeAudio && activeAudio.qualities?.length > 1"
-               class="pointer-events-auto flex flex-col gap-2 items-end ml-auto">
-            <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Audio Quality</label>
-            <div class="flex flex-wrap gap-2 justify-end">
-              <button v-for="q in activeAudio.qualities" :key="q.variant_id" @click="changeAudioQuality(q.storage_path)"
-                      :class="['px-3 py-1 text-sm rounded transition-colors border', activeAudio.active_path === q.storage_path ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']">
-                {{ q.label }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2. Ряд выбора видео-качества -->
-        <div v-if="activeVideo && activeVideo.qualities && activeVideo.qualities.length > 1" class="flex justify-end">
-          <div class="pointer-events-auto flex flex-col gap-2 items-end">
-            <label class="text-xs text-gray-400 font-bold uppercase tracking-wider">Video Quality</label>
-            <div class="flex flex-wrap gap-2 justify-end">
-              <button v-for="q in activeVideo.qualities" :key="q.variant_id" @click="changeVideoQuality(q.storage_path)"
-                      :class="['px-3 py-1 text-sm rounded transition-colors border', activeVideo.active_path === q.storage_path ? 'bg-brand text-white border-brand' : 'bg-gray-800/80 border-gray-600 text-gray-300 hover:bg-gray-700']">
-                {{ q.label }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
     </div>
   </div>
 </template>
 
 <style scoped>
-.video-player-container {
-  position: relative;
+/* Убираем дефолтные стили скролла и селектов для кроссбраузерности */
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+}
+
+input[type=range] {
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 12px;
+  width: 12px;
+  border-radius: 50%;
+  background: #e50914;
+  cursor: pointer;
+  margin-top: -4px;
+}
+
+input[type=range]::-webkit-slider-runnable-track {
   width: 100%;
-  height: 100%;
-  aspect-ratio: 16 / 9;
-  background-color: black;
-  border-radius: 0.5rem;
-  overflow: hidden;
-}
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 3px;
+  height: 4px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
 }
 </style>
