@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     TitleViewSet, player_manifest, rate_track_group,
     player_telemetry, continue_watching, recommendations, WatchView, save_workbench, EpisodeWatchView,
-    player_external_sources, GenreViewSet, CatalogView
+    player_external_sources, GenreViewSet, CatalogView, content_tree_api, assign_file_api
 )
 
 router = DefaultRouter()
@@ -25,6 +25,8 @@ urlpatterns = [
     path('watch/episode/<int:pk>/', EpisodeWatchView.as_view(), name='watch-episode'),
     path('api/v1/content/workbench/save/<str:content_type_str>/<int:object_id>/', save_workbench,
          name='save-workbench'),
+    path('api/v1/content/tree/', content_tree_api, name='content-tree'),
+    path('api/v1/content/assign-file/', assign_file_api, name='assign-file'),
     path('watch/<int:pk>/', WatchView.as_view(), name='watch'),
     path('catalog/', CatalogView.as_view(), name='catalog'),
 ]

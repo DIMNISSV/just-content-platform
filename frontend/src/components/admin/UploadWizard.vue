@@ -25,6 +25,49 @@ const fetchData = async () => {
   }
 };
 
+const handleDragStart = (e, fileId) => {
+  e.dataTransfer.setData('fileId', fileId);
+  e.dataTransfer.dropEffect = 'move';
+};
+
+const handleDrop = async (e, targetId, targetType) => {
+  e.preventDefault();
+  const fileId = e.dataTransfer.getData('fileId');
+  if (!fileId) return;
+
+  // Визуальный фидбек начала загрузки
+  isLoading.value = true;
+
+  try {
+    const res = await fetch('/api/v1/content/assign-file/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': props.csrfToken
+      },
+      body: JSON.stringify({
+        raw_file_id: fileId,
+        target_id: targetId,
+        target_type: targetType
+      })
+    });
+
+    if (res.ok) {
+      alert("File assigned and extraction started!");
+      // Можно пометить файл как использованный локально
+      const file = rawFiles.value.find(f => f.id === fileId);
+      if (file) file.is_assigned = true;
+    } else {
+      const err = await res.json();
+      alert("Error: " + err.error);
+    }
+  } catch (err) {
+    console.error(err);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
 onMounted(fetchData);
 
 // Состояние развернутых веток дерева
@@ -45,7 +88,11 @@ const toggleTitle = (id) => {
       </div>
       <div class="flex-grow overflow-y-auto p-2 space-y-2 custom-scrollbar">
         <div v-for="file in rawFiles" :key="file.id"
-             class="p-3 bg-gray-800/50 border border-gray-700 rounded hover:border-brand cursor-move transition-colors group">
+             draggable="true"
+             @dragstart="handleDragStart($event, file.id)"
+             class="p-3 bg-gray-800/50 border border-gray-700 rounded hover:border-brand cursor-move transition-colors group"
+             :class="{'opacity-40 grayscale': file.is_assigned}"
+        >
           <div class="text-sm font-medium truncate" :title="file.original_name">{{ file.original_name }}</div>
           <div class="flex justify-between items-center mt-2">
             <span class="text-[10px] text-gray-500">{{ new Date(file.created_at).toLocaleDateString() }}</span>
@@ -81,6 +128,8 @@ const toggleTitle = (id) => {
           <!-- Episodes Level -->
           <div v-if="expandedTitles.has(title.id)" class="ml-6 mt-2 space-y-1 border-l-2 border-gray-800 pl-4">
             <div v-for="ep in title.episodes" :key="ep.id"
+                 @dragover.prevent
+                 @drop="handleDrop($event, ep.id, 'episode')"
                  class="p-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800/50 rounded flex justify-between items-center group">
               <span>S{{ ep.season_number }}E{{ ep.episode_number }}: {{ ep.name }}</span>
               <button

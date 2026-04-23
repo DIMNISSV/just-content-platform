@@ -1,14 +1,16 @@
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.db import transaction
 from django.views.generic import ListView, DetailView, TemplateView
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
 from rest_framework.response import Response
 
-from media.models import Asset
+from media.models import Asset, RawMediaFile, MediaStream, AssetVariant
 from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack, Genre
 from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, GenreSerializer
+from media.tasks import extract_stream_task
 
 
 class TitleViewSet(viewsets.ReadOnlyModelViewSet):
@@ -492,3 +494,61 @@ def content_tree_api(request):
             'episodes': episodes
         })
     return Response(tree)
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def assign_file_api(request):
+    raw_file_id = request.data.get('raw_file_id')
+    target_id = request.data.get('target_id')
+    target_type = request.data.get('target_type')  # 'title' or 'episode'
+
+    try:
+        raw_file = RawMediaFile.objects.get(id=raw_file_id)
+        if target_type == 'title':
+            target_obj = Title.objects.get(id=target_id)
+            ctype = ContentType.objects.get_for_model(Title)
+        else:
+            target_obj = Episode.objects.get(id=target_id)
+            ctype = ContentType.objects.get_for_model(Episode)
+    except (RawMediaFile.DoesNotExist, Title.DoesNotExist, Episode.DoesNotExist):
+        return Response({"error": "Invalid IDs"}, status=400)
+
+    # 1. Берем первый видео-стрим и первый аудио-стрим для автоматизации
+    video_stream = raw_file.streams.filter(codec_type=MediaStream.StreamType.VIDEO).first()
+
+    if not video_stream:
+        return Response({"error": "No video stream found in file"}, status=400)
+
+    with transaction.atomic():
+        # 2. Создаем Asset
+        asset = Asset.objects.create(
+            source_stream=video_stream,
+            type=Asset.Type.VIDEO
+        )
+
+        # 3. Создаем Variant (Original/Default)
+        variant = AssetVariant.objects.create(
+            asset=asset,
+            quality_label="Original",
+            status=AssetVariant.Status.PROCESSING
+        )
+
+        # 4. Создаем TrackGroup
+        tg_name = f"Auto Version ({raw_file.original_name[:20]})"
+        track_group = TrackGroup.objects.create(
+            name=tg_name,
+            content_type=ctype,
+            object_id=target_id,
+            video_asset=asset
+        )
+
+        # 5. Запускаем задачу Celery
+        transaction.on_commit(lambda: extract_stream_task.delay(variant.id))
+
+    return Response({
+        "status": "success",
+        "asset_id": asset.id,
+        "track_group_id": track_group.id,
+        "variant_id": variant.id
+    })
