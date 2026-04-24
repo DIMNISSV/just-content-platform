@@ -4,12 +4,16 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     TitleViewSet, player_manifest, rate_track_group,
     player_telemetry, continue_watching, recommendations, WatchView, save_workbench, EpisodeWatchView,
-    player_external_sources, GenreViewSet, CatalogView, content_tree_api, assign_file_api
+    player_external_sources, GenreViewSet, CatalogView, content_tree_api, assign_file_api, EpisodeViewSet,
+    TrackGroupViewSet, AdditionalTrackViewSet
 )
 
 router = DefaultRouter()
 router.register(r'titles', TitleViewSet, basename='title')
 router.register(r'genres', GenreViewSet, basename='genre')
+router.register(r'episodes', EpisodeViewSet, basename='episode')
+router.register(r'track-groups', TrackGroupViewSet, basename='track-group')
+router.register(r'additional-tracks', AdditionalTrackViewSet, basename='additional-track')
 
 urlpatterns = [
     path('api/v1/content/', include(router.urls)),

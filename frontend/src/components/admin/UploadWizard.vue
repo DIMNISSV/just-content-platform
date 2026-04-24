@@ -47,6 +47,47 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (pollingInterval) clearInterval(pollingInterval);
 });
+const handleCreateEpisode = async (payload) => {
+  try {
+    const res = await fetch('/api/v1/content/episodes/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': props.csrfToken},
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) await fetchData();
+    else alert("Failed to create episode. Check if S/E already exists.");
+  } catch (e) {
+    console.error(e);
+  }
+};
+
+// Обработка удаления версии
+const handleDeleteGroup = async (groupId) => {
+  if (!confirm("Are you sure? This will delete the version but keep the physical assets.")) return;
+  try {
+    const res = await fetch(`/api/v1/content/track-groups/${groupId}/`, {
+      method: 'DELETE',
+      headers: {'X-CSRFToken': props.csrfToken}
+    });
+    if (res.ok) await fetchData();
+  } catch (e) {
+    console.error(e);
+  }
+};
+
+// Обработка удаления (отвязки) аудио
+const handleDeleteTrack = async (linkId) => {
+  if (!confirm("Remove this audio track from version?")) return;
+  try {
+    const res = await fetch(`/api/v1/content/additional-tracks/${linkId}/`, {
+      method: 'DELETE',
+      headers: {'X-CSRFToken': props.csrfToken}
+    });
+    if (res.ok) await fetchData();
+  } catch (e) {
+    console.error(e);
+  }
+};
 
 // Обработка загрузки файлов с ПК
 const handleUploadFiles = (files) => {
@@ -154,6 +195,9 @@ const confirmStreamSelection = async (selectedStreams) => {
     <WizardContentTree
         :content-tree="contentTree"
         @assign-drop="handleAssignDrop"
+        @create-episode="handleCreateEpisode"
+        @delete-group="handleDeleteGroup"
+        @delete-track="handleDeleteTrack"
     />
 
     <StreamSelectorModal

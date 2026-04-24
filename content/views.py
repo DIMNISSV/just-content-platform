@@ -4,7 +4,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.shortcuts import render
 from django.views.generic import ListView, DetailView, TemplateView
-from rest_framework import viewsets, filters, status
+from rest_framework import viewsets, filters, status, mixins
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
 from rest_framework.response import Response
@@ -12,7 +12,8 @@ from rest_framework.response import Response
 from media.models import Asset, RawMediaFile, AssetVariant
 from media.tasks import extract_stream_task
 from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack, Genre
-from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, GenreSerializer
+from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, GenreSerializer, \
+    EpisodeSerializer
 
 
 class TitleViewSet(viewsets.ReadOnlyModelViewSet):
@@ -498,6 +499,7 @@ def content_tree_api(request):
                 for track in tg.additional_tracks.all():
                     assets.append({
                         'id': track.asset.id,
+                        'link_id': track.id,
                         'type': 'AUDIO',
                         'name': track.language
                     })
@@ -609,3 +611,19 @@ def upload_wizard_view(request):
         'is_popup': False,
     }
     return render(request, 'admin/upload_wizard.html', context)
+
+
+class EpisodeViewSet(viewsets.ModelViewSet):
+    queryset = Episode.objects.all()
+    serializer_class = EpisodeSerializer
+    permission_classes = [IsAdminUser]
+
+
+class TrackGroupViewSet(mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    queryset = TrackGroup.objects.all()
+    permission_classes = [IsAdminUser]
+
+
+class AdditionalTrackViewSet(mixins.DestroyModelMixin, viewsets.GenericViewSet):
+    queryset = AdditionalTrack.objects.all()
+    permission_classes = [IsAdminUser]
