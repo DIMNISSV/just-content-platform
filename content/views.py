@@ -93,6 +93,9 @@ def rate_track_group(request, group_id):
 
 @api_view(['GET'])
 def player_manifest(request, content_type_str, object_id):
+    from aggregator.models import ExternalContentRegistry
+    from aggregator.services import fetch_registry_manifests
+
     if content_type_str.lower() == 'title':
         ctype = ContentType.objects.get_for_model(Title)
     elif content_type_str.lower() == 'episode':
@@ -100,6 +103,7 @@ def player_manifest(request, content_type_str, object_id):
     else:
         return Response({"error": "invalid content type"}, status=400)
 
+    # --- 1. LOCAL SOURCES ---
     track_groups = TrackGroup.objects.filter(
         content_type=ctype,
         object_id=object_id
@@ -110,21 +114,14 @@ def player_manifest(request, content_type_str, object_id):
 
     sources = []
     for tg in track_groups:
-        # 1. VIDEO QUALITIES
         if tg.video_asset:
             v_variants = tg.video_asset.variants.filter(status='READY').order_by('-preset__width')
-            qualities = []
-            for v in v_variants:
-                qualities.append({
-                    "variant_id": str(v.id),
-                    "label": v.quality_label or "Original",
-                    "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"
-                })
-
+            qualities = [{"variant_id": str(v.id), "label": v.quality_label or "Original",
+                          "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"} for v in v_variants]
             if qualities:
                 sources.append({
                     "id": f"video_{tg.id}",
-                    "asset_id": str(tg.video_asset.id) if tg.video_asset else None,
+                    "asset_id": str(tg.video_asset.id),
                     "type": "VIDEO",
                     "sync_group_id": str(tg.id),
                     "group_title": tg.name,
@@ -133,22 +130,15 @@ def player_manifest(request, content_type_str, object_id):
                     "active_path": qualities[0]["storage_path"]
                 })
 
-        # 2. AUDIO QUALITIES
         for extra in tg.additional_tracks.all():
             if extra.asset:
                 a_variants = extra.asset.variants.filter(status='READY')
-                qualities = []
-                for v in a_variants:
-                    qualities.append({
-                        "variant_id": str(v.id),
-                        "label": v.quality_label or "Original",
-                        "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"
-                    })
-
+                qualities = [{"variant_id": str(v.id), "label": v.quality_label or "Original",
+                              "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"} for v in a_variants]
                 if qualities:
                     sources.append({
                         "id": f"extra_{extra.id}",
-                        "asset_id": str(extra.asset.id) if extra.asset else None,
+                        "asset_id": str(extra.asset.id),
                         "type": extra.asset.type,
                         "sync_group_id": str(tg.id),
                         "group_title": tg.name,
@@ -158,19 +148,54 @@ def player_manifest(request, content_type_str, object_id):
                         "active_path": qualities[0]["storage_path"]
                     })
 
-    # Вычисление следующей серии
+    # --- 2. EXTERNAL SOURCES (PLUGINS) & DOMAIN GATING ---
+    domain = getattr(request, 'tenant_domain', None)
+
+    registry_qs = ExternalContentRegistry.objects.select_related('plugin').filter(plugin__is_active=True)
+    if content_type_str.lower() == 'title':
+        registry_qs = registry_qs.filter(title_id=object_id, episode__isnull=True)
+    else:
+        registry_qs = registry_qs.filter(episode_id=object_id)
+
+    valid_entries = []
+    for entry in registry_qs:
+        allowed = entry.plugin.allowed_domains
+        # Если список разрешенных доменов пуст, либо содержит '*', либо текущий домен в списке
+        if not allowed or '*' in allowed or domain in allowed:
+            valid_entries.append(entry)
+
+    manifest_entries = []
+    for entry in valid_entries:
+        # Интеграция внешних iframe-плееров
+        if entry.content_type in [ExternalContentRegistry.ContentTypeChoices.EPISODE_IFRAME,
+                                  ExternalContentRegistry.ContentTypeChoices.ENTITY_IFRAME]:
+            sources.append({
+                "id": f"ext_iframe_{entry.id}",
+                "asset_id": str(entry.id),
+                "type": "EXTERNAL_PLAYER",
+                "provider": entry.plugin.name,
+                "storage_path": entry.fetch_url,
+                "sync_group_id": f"ext_group_{entry.id}",
+                "group_title": f"External Player ({entry.plugin.name})"
+            })
+        elif entry.content_type == ExternalContentRegistry.ContentTypeChoices.MANIFEST:
+            manifest_entries.append(entry)
+
+    # Параллельный опрос манифестов (Deep Integration)
+    ext_manifest_sources = fetch_registry_manifests(manifest_entries)
+    sources.extend(ext_manifest_sources)
+
+    # --- 3. NEXT EPISODE LOGIC ---
     next_episode_id = None
     if content_type_str.lower() == 'episode':
         try:
             current_ep = Episode.objects.get(id=object_id)
-            # Ищем следующую серию в текущем сезоне
             next_ep = Episode.objects.filter(
                 title=current_ep.title,
                 season_number=current_ep.season_number,
                 episode_number__gt=current_ep.episode_number
             ).order_by('episode_number').first()
 
-            # Если нет в текущем, ищем первую серию следующего сезона
             if not next_ep:
                 next_ep = Episode.objects.filter(
                     title=current_ep.title,
@@ -429,36 +454,10 @@ class EpisodeWatchView(DetailView):
 @api_view(['GET'])
 def player_external_sources(request, content_type_str, object_id):
     """
-    Опрашивает внешние плагины для манифеста.
+    Deprecated. Данные теперь интегрируются непосредственно в player_manifest.
+    Оставлено для совместимости с текущим фронтендом до его обновления.
     """
-    from aggregator.services import get_external_sources
-
-    if content_type_str.lower() == 'title':
-        model_class = Title
-    elif content_type_str.lower() == 'episode':
-        model_class = Episode
-    else:
-        return Response({"error": "invalid type"}, status=400)
-
-    try:
-        content_obj = model_class.objects.get(id=object_id)
-    except model_class.DoesNotExist:
-        return Response({"error": "not found"}, status=404)
-
-    external_ids = {}
-    if content_type_str.lower() == 'episode':
-        if content_obj.title.imdb_id: external_ids['imdb'] = content_obj.title.imdb_id
-        if content_obj.title.tmdb_id: external_ids['tmdb'] = content_obj.title.tmdb_id
-        external_ids['season'] = content_obj.season_number
-        external_ids['episode'] = content_obj.episode_number
-    else:
-        if content_obj.imdb_id: external_ids['imdb'] = content_obj.imdb_id
-        if content_obj.tmdb_id: external_ids['tmdb'] = content_obj.tmdb_id
-
-    # Этот вызов может длиться несколько секунд
-    external_sources = get_external_sources(external_ids)
-
-    return Response({"sources": external_sources})
+    return Response({"sources": []})
 
 
 class GenreViewSet(viewsets.ReadOnlyModelViewSet):
