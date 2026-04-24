@@ -80,8 +80,14 @@ const handleDragStart = (e, file) => {
       <div v-for="file in rawFiles" :key="file.id"
            :draggable="file.status === 'READY'"
            @dragstart="handleDragStart($event, file)"
-           class="p-3 bg-gray-800/50 border rounded transition-colors group"
+           class="p-3 bg-gray-800/50 border rounded transition-colors group relative"
            :class="file.status === 'READY' ? 'border-gray-700 hover:border-brand cursor-move' : 'border-gray-800 opacity-60 cursor-not-allowed'">
+
+        <div v-if="file.status !== 'READY'"
+             class="absolute inset-0 bg-black/20 z-10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <span class="text-[9px] bg-black px-2 py-1 rounded text-white font-bold">WAIT FOR ANALYSIS</span>
+        </div>
+
         <div class="text-sm font-medium truncate" :title="file.original_name">{{ file.original_name }}</div>
         <div class="flex justify-between items-center mt-2">
           <span class="text-[10px] text-gray-500 font-mono">{{ file.id.substring(0, 8) }}</span>

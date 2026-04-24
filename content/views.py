@@ -532,11 +532,10 @@ def content_tree_api(request):
 @permission_classes([IsAdminUser])
 def assign_file_api(request):
     raw_file_id = request.data.get('raw_file_id')
-    # target_id может быть либо ID Эпизода/Тайтла (для новой группы), либо ID самой TrackGroup
     target_id = request.data.get('target_id')
-    drop_type = request.data.get('drop_type')  # 'new_group' or 'existing_group'
-    target_type = request.data.get('target_type')  # 'title' or 'episode' (только для new_group)
-    selected_streams = request.data.get('selected_streams', [])  # List of {index, type, language, offset_ms, is_video}
+    drop_type = request.data.get('drop_type')  # 'new_group' | 'existing_group'
+    target_type = request.data.get('target_type')  # 'title' | 'episode'
+    selected_streams = request.data.get('selected_streams', [])
 
     try:
         raw_file = RawMediaFile.objects.get(id=raw_file_id)
@@ -544,59 +543,69 @@ def assign_file_api(request):
         return Response({"error": "File not found"}, status=404)
 
     with transaction.atomic():
-        track_group = None
-        variant_ids = []
+        new_variants_to_extract = []
 
-        # 1. Обработка логики Группы (Версии)
         if drop_type == 'new_group':
-            # Ищем выбранный видео-стрим
             v_stream_info = next((s for s in selected_streams if s.get('is_video')), None)
             if not v_stream_info:
-                return Response({"error": "Video stream is required for new version"}, status=400)
+                return Response({"error": "Video stream required"}, status=400)
 
             v_stream = raw_file.streams.get(index=v_stream_info['index'])
-            video_asset = Asset.objects.create(source_stream=v_stream, type=Asset.Type.VIDEO)
-            v_variant = AssetVariant.objects.create(asset=video_asset, quality_label="Original")
-            variant_ids.append(v_variant.id)
 
-            # Создаем саму группу
+            video_asset, created = Asset.objects.get_or_create(
+                source_stream=v_stream,
+                type=Asset.Type.VIDEO
+            )
+
+            if not video_asset.variants.filter(status=AssetVariant.Status.READY).exists():
+                variant, v_created = AssetVariant.objects.get_or_create(
+                    asset=video_asset,
+                    quality_label="Original",
+                    defaults={'status': AssetVariant.Status.PROCESSING}
+                )
+                if v_created:
+                    new_variants_to_extract.append(variant.id)
+
             ctype = ContentType.objects.get_for_model(Title if target_type == 'title' else Episode)
-
-            # Безопасная обработка null в original_name
-            safe_name = (raw_file.original_name or f"File_{raw_file.id.hex}")[:30]
-
             track_group = TrackGroup.objects.create(
-                name=f"Version {safe_name}",
+                name=f"Version {(raw_file.original_name or 'New')[:30]}",
                 content_type=ctype,
                 object_id=target_id,
                 video_asset=video_asset
             )
         else:
-            # Добавляем в существующую группу
             track_group = TrackGroup.objects.get(id=target_id)
 
-        # 2. Обработка аудио-дорожек и субтитров
         for s_info in selected_streams:
-            if s_info.get('is_video') and drop_type == 'existing_group':
-                continue  # Видео в существующей группе менять нельзя через этот API
+            if s_info.get('is_video'): continue
 
-            if not s_info.get('is_video'):
-                stream = raw_file.streams.get(index=s_info['index'])
-                asset = Asset.objects.create(source_stream=stream, type=stream.codec_type)
-                variant = AssetVariant.objects.create(asset=asset, quality_label="Original")
-                variant_ids.append(variant.id)
+            stream = raw_file.streams.get(index=s_info['index'])
 
+            audio_asset, a_created = Asset.objects.get_or_create(
+                source_stream=stream,
+                type=stream.codec_type
+            )
+
+            if not audio_asset.variants.filter(status=AssetVariant.Status.READY).exists():
+                variant, v_created = AssetVariant.objects.get_or_create(
+                    asset=audio_asset,
+                    quality_label="Original",
+                    defaults={'status': AssetVariant.Status.PROCESSING}
+                )
+                if v_created:
+                    new_variants_to_extract.append(variant.id)
+
+            if not AdditionalTrack.objects.filter(track_group=track_group, asset=audio_asset).exists():
                 AdditionalTrack.objects.create(
                     track_group=track_group,
-                    asset=asset,
+                    asset=audio_asset,
                     language=s_info.get('language', 'Unknown'),
                     offset_ms=s_info.get('offset_ms', 0)
                 )
 
-        # 3. Запуск транскодирования
-        transaction.on_commit(lambda: [extract_stream_task.delay(vid) for vid in variant_ids])
+        transaction.on_commit(lambda: [extract_stream_task.delay(vid) for vid in new_variants_to_extract])
 
-    return Response({"status": "success", "track_group_id": track_group.id})
+    return Response({"status": "success", "reused_count": len(selected_streams) - len(new_variants_to_extract)})
 
 
 @staff_member_required
