@@ -26,8 +26,12 @@ class Title(models.Model):
     genres = models.ManyToManyField('Genre', blank=True)
     imdb_id = models.CharField(max_length=20, blank=True)
     tmdb_id = models.CharField(max_length=20, blank=True)
+    kp_id = models.CharField(max_length=20, blank=True)
+    shiki_id = models.CharField(max_length=20, blank=True)
+    mal_id = models.CharField(max_length=20, blank=True)
+    mdl_id = models.CharField(max_length=20, blank=True)
+    wa_id = models.CharField(max_length=20, blank=True)
     poster = models.ImageField(upload_to='posters/', null=True, blank=True)
-
     rating_score = models.FloatField(default=0.0, db_index=True)
     votes_count = models.IntegerField(default=0)
 
