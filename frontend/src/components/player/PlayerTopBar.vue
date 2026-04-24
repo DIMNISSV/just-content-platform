@@ -50,7 +50,7 @@ const rateTrack = (score) => {
         <option value="original" class="bg-gray-900">Original</option>
         <option v-for="a in currentGroupAudios" :key="a.id" :value="a.id" class="bg-gray-900"
                 :selected="activeAudioId === a.id">
-          {{ a.meta_info?.language || 'Dub' }}
+          {{ a.provider ? `[${a.provider}] ` : '' }}{{ a.meta_info?.language || 'Dub' }}
         </option>
       </select>
     </div>

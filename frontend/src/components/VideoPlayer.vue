@@ -135,7 +135,6 @@ const fetchManifest = async () => {
       const targetGroup = rememberedId || groupKeys[0];
       await selectGroup(targetGroup);
     }
-    fetchExternalSources();
   } catch (e) {
     error.value = "Failed to load video manifest.";
   } finally {
@@ -143,37 +142,41 @@ const fetchManifest = async () => {
   }
 };
 
-const fetchExternalSources = async () => {
-  try {
-    const response = await fetch(`/api/v1/player/manifest/external/${props.contentType}/${props.contentId}/`);
-    if (response.ok) {
-      const extData = await response.json();
-      if (extData.sources && extData.sources.length > 0) {
-        processSources(extData.sources);
-        if (!activeGroupId.value) {
-          const groupKeys = Object.keys(groupedSources.value);
-          if (groupKeys.length > 0) selectGroup(groupKeys[0]);
-        }
-      }
-    }
-  } catch (e) {
-  }
-};
-
 const processSources = (sources) => {
   const groups = {};
+  const floatingAudios = [];
+
   sources.forEach(source => {
     if (source.type === 'EXTERNAL_PLAYER') {
-      groups[source.asset_id] = {title: source.provider || 'External Source', video: source, audios: []};
+      groups[source.asset_id] = {
+        title: source.group_title || source.provider || 'External Source',
+        video: source,
+        audios: []
+      };
       return;
     }
+
     const gid = source.sync_group_id;
-    if (!gid) return;
+    if (!gid) {
+      if (source.type === 'AUDIO') floatingAudios.push(source);
+      return;
+    }
+
     if (!groups[gid]) groups[gid] = {title: source.group_title || 'Default', video: null, audios: []};
 
     if (source.type === 'VIDEO') groups[gid].video = source;
-    else if (source.type === 'AUDIO') groups[gid].audios.push(source);
+    else if (source.type === 'AUDIO' || source.type === 'SUBTITLE') groups[gid].audios.push(source);
   });
+
+  // Приклеиваем "плавающие" внешние аудиодорожки ко всем локальным видеогруппам
+  Object.values(groups).forEach(group => {
+    if (group.video && group.video.type === 'VIDEO') {
+      floatingAudios.forEach(fa => {
+        group.audios.push({...fa, sync_group_id: group.video.sync_group_id});
+      });
+    }
+  });
+
   groupedSources.value = {...groupedSources.value, ...groups};
 };
 
