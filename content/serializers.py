@@ -12,7 +12,7 @@ class GenreSerializer(serializers.ModelSerializer):
 class EpisodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Episode
-        fields = ['id', 'season_number', 'episode_number', 'name', 'description']
+        fields = ['id', 'title', 'season_number', 'episode_number', 'name', 'description']
 
 
 class TitleSerializer(serializers.ModelSerializer):
