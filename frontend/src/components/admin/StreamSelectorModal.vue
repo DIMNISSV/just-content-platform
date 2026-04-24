@@ -9,8 +9,9 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'confirm']);
 
-// Инициализация списка стримов из метаданных
-const streams = ref(props.file.metadata.streams.map(s => ({
+const rawStreams = props.file?.metadata?.streams || [];
+
+const streams = ref(rawStreams.map(s => ({
   ...s,
   selected: false,
   is_video: s.codec_type === 'video',
