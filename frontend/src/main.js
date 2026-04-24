@@ -8,9 +8,17 @@ import ContinueWatching from './components/ContinueWatching.vue';
 import Recommendations from './components/Recommendations.vue';
 import TitleRating from './components/TitleRating.vue';
 import UploadWizard from './components/admin/UploadWizard.vue';
+import FavoriteButton from "./components/FavoriteButton.vue";
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Монтирование блоков главной страницы
+    const favoriteMounts = document.querySelectorAll('.vue-favorite-button');
+    favoriteMounts.forEach(mount => {
+        createApp(FavoriteButton, {
+            titleId: mount.dataset.titleId,
+            initialState: mount.dataset.initialState,
+            csrfToken: mount.dataset.csrf
+        }).mount(mount);
+    });
     const continueWatchingMount = document.getElementById('vue-continue-watching');
     if (continueWatchingMount) {
         createApp(ContinueWatching).mount('#vue-continue-watching');

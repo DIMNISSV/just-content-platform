@@ -32,7 +32,16 @@
                 {% endif %}
             </div>
             <div class="w-full md:w-3/4">
-                <h1 class="text-4xl font-bold mb-2">{{ title.name }}</h1>
+                <div class="flex items-center gap-6 mb-2">
+                    <h1 class="text-4xl font-bold">{{ title.name }}</h1>
+                    {% if user.is_authenticated %}
+                        <div class="vue-favorite-button"
+                             data-title-id="{{ title.id }}"
+                             data-initial-state="{{ is_favorite }}"
+                             data-csrf="{{ csrf_token }}">
+                        </div>
+                    {% endif %}
+                </div>
                 <p class="text-gray-400 text-lg mb-4">{{ title.original_name }} ({{ title.release_year }})</p>
 
                 <div class="flex gap-2 mb-6">

@@ -17,14 +17,26 @@ class EpisodeSerializer(serializers.ModelSerializer):
 
 class TitleSerializer(serializers.ModelSerializer):
     genres = GenreSerializer(many=True, read_only=True)
+    is_favorite = serializers.SerializerMethodField()
 
     class Meta:
         model = Title
         fields = [
             'id', 'type', 'name', 'original_name', 'description',
             'release_year', 'genres', 'imdb_id', 'tmdb_id',
-            'poster', 'created_at'
+            'poster', 'created_at', 'rating_score', 'is_favorite'
         ]
+
+    def get_is_favorite(self, obj):
+        # Используем аннотацию из QuerySet (чтобы избежать N+1 проблемы)
+        # Если аннотации нет (например при единичном запросе без нее), падаем на обычный фильтр
+        if hasattr(obj, 'is_favorite_annotation'):
+            return obj.is_favorite_annotation
+
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.favorited_by.filter(user=request.user).exists()
+        return False
 
 
 class TitleDetailSerializer(TitleSerializer):

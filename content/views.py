@@ -11,7 +11,8 @@ from rest_framework.response import Response
 
 from media.models import Asset, RawMediaFile, AssetVariant, TranscodingPreset
 from media.tasks import extract_stream_task
-from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack, Genre
+from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack, Genre, \
+    Favorite
 from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, GenreSerializer, \
     EpisodeSerializer
 
@@ -28,7 +29,18 @@ class TitleViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
+        from django.db.models import Exists, OuterRef
+        from .models import Favorite
+
         qs = super().get_queryset()
+
+        user = self.request.user
+        if user.is_authenticated:
+            favorite_subquery = Favorite.objects.filter(user=user, title=OuterRef('pk'))
+            qs = qs.annotate(is_favorite_annotation=Exists(favorite_subquery))
+        else:
+            from django.db.models import Value
+            qs = qs.annotate(is_favorite_annotation=Value(False))
 
         # Ручная фильтрация
         c_type = self.request.query_params.get('type')
@@ -351,7 +363,12 @@ class WatchView(DetailView):
         context['last_quality'] = ''
         context['user_title_rating'] = 0
 
+        context['is_favorite'] = 'false'
+
         if self.request.user.is_authenticated:
+            if Favorite.objects.filter(user=self.request.user, title=self.object).exists():
+                context['is_favorite'] = 'true'
+
             history = WatchHistory.objects.filter(user=self.request.user, title=self.object).first()
             if history:
                 context['start_progress'] = history.progress_ms
@@ -632,3 +649,16 @@ class TrackGroupViewSet(mixins.DestroyModelMixin, viewsets.GenericViewSet):
 class AdditionalTrackViewSet(mixins.DestroyModelMixin, viewsets.GenericViewSet):
     queryset = AdditionalTrack.objects.all()
     permission_classes = [IsAdminUser]
+
+
+@action(detail=True, methods=['post'], permission_classes=[IsAuthenticated], url_path='toggle-favorite')
+def toggle_favorite(self, request, pk=None):
+    from .models import Favorite
+    title = self.get_object()
+
+    fav, created = Favorite.objects.get_or_create(user=request.user, title=title)
+    if not created:
+        fav.delete()
+        return Response({"status": "removed", "is_favorite": False})
+
+    return Response({"status": "added", "is_favorite": True})

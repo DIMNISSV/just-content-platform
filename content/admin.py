@@ -4,7 +4,13 @@ from django.template.response import TemplateResponse
 from django.urls import path
 from django.utils.html import format_html
 
-from .models import Genre, Title, Episode, TrackGroup, AdditionalTrack
+from .models import Genre, Title, Episode, TrackGroup, AdditionalTrack, Favorite
+
+
+@admin.register(Favorite)
+class FavoriteAdmin(admin.ModelAdmin):
+    list_display = ('user', 'title', 'created_at')
+    search_fields = ('user__email', 'title__name')
 
 
 @admin.register(Genre)
