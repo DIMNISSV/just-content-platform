@@ -3,7 +3,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.shortcuts import render
-from django.views.generic import ListView, DetailView, TemplateView
+from django.views.generic import DetailView, TemplateView
 from rest_framework import viewsets, filters, status, mixins
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
@@ -336,10 +336,16 @@ def recommendations(request):
         top_titles = Title.objects.order_by('-rating_score', '-votes_count')[:10]
         return Response(TitleSerializer(top_titles, many=True).data)
 
-    # 3. Extract preferred genres
     preferred_genres = set()
     for item in recent_history:
         for genre in item.title.genres.all():
+            preferred_genres.add(genre.id)
+
+    from .models import Favorite
+    user_favorites = Favorite.objects.filter(user=request.user).select_related('title').prefetch_related(
+        'title__genres')
+    for fav in user_favorites:
+        for genre in fav.title.genres.all():
             preferred_genres.add(genre.id)
 
     # 4. Find titles matching these genres, exclude already watched
@@ -364,14 +370,18 @@ def recommendations(request):
     return Response(TitleSerializer(recommended, many=True).data)
 
 
-class HomeView(ListView):
-    model = Title
+class HomeView(TemplateView):
     template_name = 'content/home.html'
-    context_object_name = 'titles'
 
-    def get_queryset(self):
-        # Получаем последние добавленные фильмы с сортировкой по рейтингу
-        return Title.objects.all().order_by('-rating_score', '-created_at')[:24]
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        # Получаем разные подборки для главной страницы
+        context['trending'] = Title.objects.all().order_by('-rating_score', '-created_at')[:12]
+        context['new_movies'] = Title.objects.filter(type=Title.Type.MOVIE).order_by('-created_at')[:6]
+        context['new_series'] = Title.objects.filter(type=Title.Type.SERIES).order_by('-created_at')[:6]
+
+        return context
 
 
 class WatchView(DetailView):

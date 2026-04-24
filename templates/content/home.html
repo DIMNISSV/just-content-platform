@@ -12,33 +12,49 @@
         <div id="vue-recommendations"></div>
 
         <div>
-            <h2 class="text-2xl font-bold mb-6 tracking-tight border-l-4 border-gray-600 pl-3">Trending Now</h2>
+            <div class="flex justify-between items-end mb-6">
+                <h2 class="text-2xl font-bold tracking-tight border-l-4 border-gray-600 pl-3">Trending Now</h2>
+                <a href="{% url 'catalog' %}" class="text-xs font-bold text-gray-500 hover:text-brand transition">VIEW
+                    ALL &rarr;</a>
+            </div>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-                {% for title in titles %}
+                {% for title in trending %}
                     <a href="{% url 'watch' title.id %}" class="group block">
-                        <div class="aspect-[2/3] bg-gray-900 rounded-lg overflow-hidden mb-3 relative">
+                        <div class="aspect-[2/3] bg-gray-900 rounded-lg overflow-hidden mb-3 relative border border-gray-800 hover:border-brand transition">
                             {% if title.poster %}
                                 <img src="{{ title.poster.url }}" alt="{{ title.name }}"
-                                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+                                     class="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300">
                             {% else %}
                                 <div class="w-full h-full flex items-center justify-center text-gray-700 font-bold text-xl">
                                     No Poster
                                 </div>
                             {% endif %}
-                            <div class="absolute top-2 right-2 bg-black bg-opacity-70 px-2 py-1 rounded text-xs font-bold text-yellow-400">
-                                {{ title.rating_score|floatformat:1 }}
+                            <div class="absolute top-2 right-2 bg-black bg-opacity-80 px-2 py-1 rounded text-xs font-bold text-yellow-400">
+                                ★ {{ title.rating_score|floatformat:1 }}
                             </div>
                         </div>
                         <h3 class="text-sm font-semibold truncate text-gray-200 group-hover:text-white">{{ title.name }}</h3>
-                        <div class="flex justify-between text-xs text-gray-500 mt-1">
+                        <div class="flex justify-between text-[10px] uppercase font-bold text-gray-500 mt-1">
                             <span>{{ title.release_year|default:"N/A" }}</span>
                             <span>{{ title.get_type_display }}</span>
                         </div>
                     </a>
-                {% empty %}
-                    <div class="col-span-full text-center py-12 text-gray-500">
-                        No content available. Go to Django Admin to add some titles.
-                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- New Series Section -->
+        <div class="pt-8 border-t border-gray-900">
+            <h2 class="text-2xl font-bold mb-6 tracking-tight border-l-4 border-blue-600 pl-3">Fresh Episodes</h2>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                {% for title in new_series %}
+                    <a href="{% url 'watch' title.id %}" class="group block">
+                        <div class="aspect-[2/3] bg-gray-900 rounded-lg overflow-hidden mb-3 relative">
+                            {% if title.poster %}<img src="{{ title.poster.url }}"
+                                                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">{% endif %}
+                        </div>
+                        <h3 class="text-sm font-semibold truncate text-gray-200 group-hover:text-white">{{ title.name }}</h3>
+                    </a>
                 {% endfor %}
             </div>
         </div>
