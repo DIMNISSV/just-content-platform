@@ -559,8 +559,12 @@ def assign_file_api(request):
 
             # Создаем саму группу
             ctype = ContentType.objects.get_for_model(Title if target_type == 'title' else Episode)
+
+            # Безопасная обработка null в original_name
+            safe_name = (raw_file.original_name or f"File_{raw_file.id.hex}")[:30]
+
             track_group = TrackGroup.objects.create(
-                name=f"Version {raw_file.original_name[:30]}",
+                name=f"Version {safe_name}",
                 content_type=ctype,
                 object_id=target_id,
                 video_asset=video_asset
