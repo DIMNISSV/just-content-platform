@@ -11,6 +11,7 @@ from rest_framework.response import Response
 
 from media.models import Asset, RawMediaFile, AssetVariant, TranscodingPreset
 from media.tasks import extract_stream_task
+from users.models import UserPreference
 from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack, Genre, \
     Favorite
 from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, GenreSerializer, \
@@ -362,10 +363,16 @@ class WatchView(DetailView):
         context['last_audio_asset'] = ''
         context['last_quality'] = ''
         context['user_title_rating'] = 0
-
         context['is_favorite'] = 'false'
+        context['pref_audio'] = 'RUS (Dub)'
+        context['auto_skip'] = 'false'
 
         if self.request.user.is_authenticated:
+            # Настройки профиля
+            pref, _ = UserPreference.objects.get_or_create(user=self.request.user)
+            context['pref_audio'] = pref.preferred_language
+            context['auto_skip'] = 'true' if pref.auto_skip_intro else 'false'
+
             if Favorite.objects.filter(user=self.request.user, title=self.object).exists():
                 context['is_favorite'] = 'true'
 
@@ -451,8 +458,15 @@ class EpisodeWatchView(DetailView):
         context['last_audio_asset'] = ''
         context['last_quality'] = ''
         context['user_title_rating'] = 0
+        context['is_favorite'] = 'false'
+        context['pref_audio'] = 'RUS (Dub)'
+        context['auto_skip'] = 'false'
 
         if self.request.user.is_authenticated:
+            pref, _ = UserPreference.objects.get_or_create(user=self.request.user)
+            context['pref_audio'] = pref.preferred_language
+            context['auto_skip'] = 'true' if pref.auto_skip_intro else 'false'
+
             history = WatchHistory.objects.filter(user=self.request.user, title=title).first()
             if history:
                 context['last_track_group'] = history.track_group_id or ''

@@ -16,10 +16,13 @@ const props = defineProps({
   lastTrackGroup: {type: [String, Number], default: ''},
   lastAudioAsset: {type: String, default: ''},
   lastQuality: {type: String, default: ''},
+  prefAudio: {type: String, default: 'RUS (Dub)'},
+  autoSkip: {type: [Boolean, String], default: false},
   csrfToken: {type: String, required: true}
 });
 
 const videoRef = ref(null);
+const autoSkipTriggered = ref(false);
 const audioRef = ref(null);
 const wrapperRef = ref(null);
 
@@ -228,6 +231,13 @@ const selectGroup = async (groupId) => {
     if (props.lastAudioAsset) {
       const rememberedAudio = group.audios.find(a => a.asset_id === props.lastAudioAsset);
       activeAudio.value = rememberedAudio || group.audios[0];
+    } else if (props.prefAudio) {
+      // Ищем дорожку, язык которой включает в себя preferred_language
+      const prefAudioMatch = group.audios.find(a =>
+          a.meta_info && a.meta_info.language &&
+          a.meta_info.language.toLowerCase().includes(props.prefAudio.toLowerCase())
+      );
+      activeAudio.value = prefAudioMatch || group.audios[0];
     } else {
       activeAudio.value = group.audios[0];
     }
@@ -399,15 +409,26 @@ const toggleMute = () => {
 };
 
 const onTimeUpdate = () => {
-  if (videoRef.value) currentTime.value = videoRef.value.currentTime;
+  if (videoRef.value) {
+    currentTime.value = videoRef.value.currentTime;
+
+    const isAutoSkipEnabled = props.autoSkip === true || props.autoSkip === 'true';
+    if (isAutoSkipEnabled && !autoSkipTriggered.value && currentTime.value > 2 && currentTime.value < 5) {
+      seek(5);
+      autoSkipTriggered.value = true;
+    }
+  }
 };
+
 const onLoadedMetadata = () => {
   if (videoRef.value) duration.value = videoRef.value.duration;
 };
+
 const onPlay = () => {
   isPlaying.value = true;
   resetControlsTimer();
 };
+
 const onPause = () => {
   isPlaying.value = false;
   showControls.value = true;

@@ -56,6 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
             lastTrackGroup: playerMount.dataset.lastTrackGroup,
             lastAudioAsset: playerMount.dataset.lastAudioAsset,
             lastQuality: playerMount.dataset.lastQuality,
+            prefAudio: playerMount.dataset.prefAudio,
+            autoSkip: playerMount.dataset.autoSkip,
             csrfToken: playerMount.dataset.csrf
         });
         app.mount('#vue-player-mount');
