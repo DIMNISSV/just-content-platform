@@ -63,6 +63,7 @@ class TranscodingPreset(models.Model):
 
     bitrate = models.CharField(max_length=20, help_text="5M, 2M, 128k...")
     width = models.IntegerField(null=True, blank=True, help_text="Для видео (напр. 3840)")
+    is_default = models.BooleanField(default=False, help_text="Применять ли этот пресет автоматически в Визарде")
 
     custom_pre_args = models.TextField(blank=True, help_text="Аргументы ДО -i (input)")
     custom_post_args = models.TextField(blank=True, help_text="Аргументы ПОСЛЕ кодеков")

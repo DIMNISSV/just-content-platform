@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
 from rest_framework.response import Response
 
-from media.models import Asset, RawMediaFile, AssetVariant
+from media.models import Asset, RawMediaFile, AssetVariant, TranscodingPreset
 from media.tasks import extract_stream_task
 from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack, Genre
 from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, GenreSerializer, \
@@ -533,8 +533,8 @@ def content_tree_api(request):
 def assign_file_api(request):
     raw_file_id = request.data.get('raw_file_id')
     target_id = request.data.get('target_id')
-    drop_type = request.data.get('drop_type')  # 'new_group' | 'existing_group'
-    target_type = request.data.get('target_type')  # 'title' | 'episode'
+    drop_type = request.data.get('drop_type')
+    target_type = request.data.get('target_type')
     selected_streams = request.data.get('selected_streams', [])
 
     try:
@@ -548,36 +548,29 @@ def assign_file_api(request):
         if drop_type == 'new_group':
             v_stream_info = next((s for s in selected_streams if s.get('is_video')), None)
             if not v_stream_info:
-                return Response({"error": "Video stream required for a new version"}, status=400)
+                return Response({"error": "Video stream required"}, status=400)
 
             v_stream = raw_file.streams.get(index=v_stream_info['index'])
+            source_width = v_stream.extra_info.get('width', 0)
 
-            video_asset, created = Asset.objects.get_or_create(
-                source_stream=v_stream,
-                type=Asset.Type.VIDEO
+            video_asset, _ = Asset.objects.get_or_create(source_stream=v_stream, type=Asset.Type.VIDEO)
+
+            orig_var, v_created = AssetVariant.objects.get_or_create(
+                asset=video_asset, quality_label="Original",
+                defaults={'status': AssetVariant.Status.PROCESSING}
             )
+            if v_created: new_variants_to_extract.append(orig_var.id)
+
+            default_presets = TranscodingPreset.objects.filter(type='VIDEO', is_default=True)
+            for p in default_presets:
+                if p.width and p.width <= source_width:
+                    p_var, p_created = AssetVariant.objects.get_or_create(
+                        asset=video_asset, preset=p, quality_label=p.name,
+                        defaults={'status': AssetVariant.Status.PROCESSING}
+                    )
+                    if p_created: new_variants_to_extract.append(p_var.id)
 
             ctype = ContentType.objects.get_for_model(Title if target_type == 'title' else Episode)
-
-            if TrackGroup.objects.filter(
-                    content_type=ctype,
-                    object_id=target_id,
-                    video_asset=video_asset
-            ).exists():
-                return Response({
-                    "error": "A version using this video file already exists for this item. "
-                             "Please add audio tracks to the existing version instead."
-                }, status=400)
-
-            if not video_asset.variants.filter(status=AssetVariant.Status.READY).exists():
-                variant, v_created = AssetVariant.objects.get_or_create(
-                    asset=video_asset,
-                    quality_label="Original",
-                    defaults={'status': AssetVariant.Status.PROCESSING}
-                )
-                if v_created:
-                    new_variants_to_extract.append(variant.id)
-
             track_group = TrackGroup.objects.create(
                 name=f"Version {(raw_file.original_name or 'New')[:30]}",
                 content_type=ctype,
@@ -589,26 +582,20 @@ def assign_file_api(request):
 
         for s_info in selected_streams:
             if s_info.get('is_video'): continue
-
             stream = raw_file.streams.get(index=s_info['index'])
-            audio_asset, a_created = Asset.objects.get_or_create(
-                source_stream=stream,
-                type=stream.codec_type
-            )
+            audio_asset, _ = Asset.objects.get_or_create(source_stream=stream, type=stream.codec_type)
 
-            if not audio_asset.variants.filter(status=AssetVariant.Status.READY).exists():
-                variant, v_created = AssetVariant.objects.get_or_create(
-                    asset=audio_asset,
-                    quality_label="Original",
-                    defaults={'status': AssetVariant.Status.PROCESSING}
-                )
-                if v_created:
-                    new_variants_to_extract.append(variant.id)
+            variant, v_created = AssetVariant.objects.get_or_create(
+                asset=audio_asset,
+                quality_label="Original",
+                defaults={'status': AssetVariant.Status.PROCESSING}
+            )
+            if v_created:
+                new_variants_to_extract.append(variant.id)
 
             if not AdditionalTrack.objects.filter(track_group=track_group, asset=audio_asset).exists():
                 AdditionalTrack.objects.create(
-                    track_group=track_group,
-                    asset=audio_asset,
+                    track_group=track_group, asset=audio_asset,
                     language=s_info.get('language', 'Unknown'),
                     offset_ms=s_info.get('offset_ms', 0)
                 )
