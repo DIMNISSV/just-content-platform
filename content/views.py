@@ -548,7 +548,7 @@ def assign_file_api(request):
         if drop_type == 'new_group':
             v_stream_info = next((s for s in selected_streams if s.get('is_video')), None)
             if not v_stream_info:
-                return Response({"error": "Video stream required"}, status=400)
+                return Response({"error": "Video stream required for a new version"}, status=400)
 
             v_stream = raw_file.streams.get(index=v_stream_info['index'])
 
@@ -556,6 +556,18 @@ def assign_file_api(request):
                 source_stream=v_stream,
                 type=Asset.Type.VIDEO
             )
+
+            ctype = ContentType.objects.get_for_model(Title if target_type == 'title' else Episode)
+
+            if TrackGroup.objects.filter(
+                    content_type=ctype,
+                    object_id=target_id,
+                    video_asset=video_asset
+            ).exists():
+                return Response({
+                    "error": "A version using this video file already exists for this item. "
+                             "Please add audio tracks to the existing version instead."
+                }, status=400)
 
             if not video_asset.variants.filter(status=AssetVariant.Status.READY).exists():
                 variant, v_created = AssetVariant.objects.get_or_create(
@@ -566,7 +578,6 @@ def assign_file_api(request):
                 if v_created:
                     new_variants_to_extract.append(variant.id)
 
-            ctype = ContentType.objects.get_for_model(Title if target_type == 'title' else Episode)
             track_group = TrackGroup.objects.create(
                 name=f"Version {(raw_file.original_name or 'New')[:30]}",
                 content_type=ctype,
@@ -580,7 +591,6 @@ def assign_file_api(request):
             if s_info.get('is_video'): continue
 
             stream = raw_file.streams.get(index=s_info['index'])
-
             audio_asset, a_created = Asset.objects.get_or_create(
                 source_stream=stream,
                 type=stream.codec_type
