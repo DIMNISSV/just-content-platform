@@ -10,10 +10,8 @@ class AssetVariantSerializer(serializers.ModelSerializer):
 
 
 class AssetSerializer(serializers.ModelSerializer):
-    # Достаем оригинальное имя файла через цепочку связей
     original_name = serializers.CharField(source='source_stream.raw_file.original_name', read_only=True,
                                           default='Unknown Source')
-    # Вкладываем варианты
     variants = AssetVariantSerializer(many=True, read_only=True)
 
     class Meta:
@@ -24,4 +22,5 @@ class AssetSerializer(serializers.ModelSerializer):
 class RawFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = RawMediaFile
-        fields = ['id', 'original_name', 'status', 'metadata', 'created_at']
+        fields = ['id', 'file', 'original_name', 'status', 'metadata', 'created_at']
+        read_only_fields = ['id', 'status', 'metadata', 'created_at']
