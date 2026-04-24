@@ -28,9 +28,10 @@
                     <span class="text-xs font-bold text-white">{{ user.email }}</span>
                     <span class="text-[10px] text-brand uppercase font-black">Trust: {{ user.trust_score }}</span>
                 </div>
-                <div class="w-10 h-10 bg-gray-800 rounded-full border border-gray-700 flex items-center justify-center font-black text-brand">
+                <a href="{% url 'profile' %}"
+                   class="w-10 h-10 bg-gray-800 rounded-full border border-gray-700 flex items-center justify-center font-black text-brand hover:border-brand transition">
                     {{ user.email|make_list|first|upper }}
-                </div>
+                </a>
                 <form action="{% url 'logout' %}" method="post" class="inline">
                     {% csrf_token %}
                     <button type="submit" class="text-xs text-gray-500 hover:text-white transition">LOGOUT</button>

@@ -1,11 +1,17 @@
 from django.contrib.auth import login
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import render, redirect
+from django.views.generic import TemplateView
 from rest_framework.generics import RetrieveUpdateAPIView
 from rest_framework.permissions import IsAuthenticated
 
 from .forms import UserRegistrationForm
 from .models import UserPreference
 from .serializers import UserPreferenceSerializer
+
+
+class ProfileView(LoginRequiredMixin, TemplateView):
+    template_name = 'users/profile.html'
 
 
 def register_view(request):

@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+
+{% block title %}My Profile - Just Content{% endblock %}
+
+{% block content %}
+    <div class="container mx-auto px-4 py-8">
+        <div id="vue-profile-mount" data-csrf="{{ csrf_token }}"></div>
+    </div>
+{% endblock %}

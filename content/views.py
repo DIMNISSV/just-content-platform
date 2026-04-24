@@ -676,3 +676,21 @@ def toggle_favorite(self, request, pk=None):
         return Response({"status": "removed", "is_favorite": False})
 
     return Response({"status": "added", "is_favorite": True})
+
+
+@action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+def favorites(self, request):
+    from django.db.models import Value, BooleanField
+
+    # Получаем тайтлы, отсортированные по дате добавления в избранное
+    fav_titles = Title.objects.filter(favorited_by__user=request.user).order_by('-favorited_by__created_at')
+    # Аннотируем поле is_favorite_annotation, чтобы сериализатор отработал без доп. запросов
+    fav_titles = fav_titles.annotate(is_favorite_annotation=Value(True, output_field=BooleanField()))
+
+    page = self.paginate_queryset(fav_titles)
+    if page is not None:
+        serializer = self.get_serializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
+
+    serializer = self.get_serializer(fav_titles, many=True)
+    return Response(serializer.data)

@@ -9,6 +9,7 @@ import Recommendations from './components/Recommendations.vue';
 import TitleRating from './components/TitleRating.vue';
 import UploadWizard from './components/admin/UploadWizard.vue';
 import FavoriteButton from "./components/FavoriteButton.vue";
+import ProfileDashboard from "./components/ProfileDashboard.vue";
 
 document.addEventListener('DOMContentLoaded', () => {
     const favoriteMounts = document.querySelectorAll('.vue-favorite-button');
@@ -61,6 +62,13 @@ document.addEventListener('DOMContentLoaded', () => {
             csrfToken: playerMount.dataset.csrf
         });
         app.mount('#vue-player-mount');
+    }
+
+    const profileMount = document.getElementById('vue-profile-mount');
+    if (profileMount) {
+        createApp(ProfileDashboard, {
+            csrfToken: profileMount.dataset.csrf
+        }).mount('#vue-profile-mount');
     }
 
     const workbenchMount = document.getElementById('vue-workbench-mount');
