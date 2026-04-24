@@ -24,3 +24,5 @@ media_storage/
 node_modules/
 
 staticfiles/
+
+celerybeat-schedule.*

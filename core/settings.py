@@ -153,3 +153,14 @@ REST_FRAMEWORK = {
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'home'
 LOGOUT_REDIRECT_URL = 'home'
+
+# Celery Beat Schedule
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'verify-plugins-daily': {
+        'task': 'aggregator.tasks.verify_plugin_registry',
+        # Runs every day at 3:00 AM
+        'schedule': crontab(hour=3, minute=0),
+    },
+}
