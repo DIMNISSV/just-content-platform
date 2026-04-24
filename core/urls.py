@@ -10,6 +10,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('content.urls')),
     path('', include('media.urls')),
+    path('', include('aggregator.urls')),
     path('', HomeView.as_view(), name='home'),
     path('', include('users.urls')),
 ]
