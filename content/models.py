@@ -66,8 +66,8 @@ class TrackGroup(models.Model):
     """
     name = models.CharField(max_length=100, default='Default Version',
                             help_text="Например: Театральная версия, Director's Cut")
+    author = models.CharField(max_length=100, blank=True, help_text="Релиз-группа или автор видео-сборки (напр. YIFY, HQCLUB)")
 
-    # GenericForeignKey позволяет привязать TrackGroup либо к Title (Фильм), либо к Episode (Серия)
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()
     content_object = GenericForeignKey('content_type', 'object_id')
@@ -97,13 +97,13 @@ class AdditionalTrack(models.Model):
     asset = models.ForeignKey(
         'media.Asset',
         on_delete=models.RESTRICT,
-        # Запрещаем выбирать VIDEO, только AUDIO или SUBTITLE
     )
-    language = models.CharField(max_length=50, default='Unknown', help_text="Например: RUS (Dub), ENG (Original)")
+    language = models.CharField(max_length=50, default='Unknown', help_text="Например: rus, eng, jpn")
+    author = models.CharField(max_length=100, blank=True, help_text="Студия озвучки или переводчик (напр. LostFilm, HDrezka)")
     offset_ms = models.IntegerField(default=0, help_text="Сдвиг для синхронизации в миллисекундах")
 
     def __str__(self):
-        return f"{self.language} track for {self.track_group.name}"
+        return f"{self.author} ({self.language}) for {self.track_group.name}"
 
 
 class TitleRating(models.Model):

@@ -25,7 +25,10 @@ const props = defineProps({
 
 const getAudioFullName = (audioObj) => {
   if (!audioObj) return '';
-  return (audioObj.provider ? `[${audioObj.provider}] ` : '') + (audioObj.meta_info?.language || 'Dub');
+  const provider = audioObj.provider ? `[${audioObj.provider}] ` : '';
+  const author = audioObj.meta_info?.author ? `${audioObj.meta_info.author} ` : '';
+  const lang = audioObj.meta_info?.language ? `(${audioObj.meta_info.language.toUpperCase()})` : '(Dub)';
+  return `${provider}${author}${lang}`.trim();
 };
 
 const videoRef = ref(null);
@@ -254,7 +257,6 @@ const selectGroup = async (groupId) => {
         if (filtered.length > 0) availableAudios = filtered; // Применяем фильтр только если он не исключает ВСЕ дорожки
       }
 
-      // Применение списка приоритетных озвучек (preferred_voiceovers)
       let voiceoversList = [];
       try {
         voiceoversList = JSON.parse(props.preferredVoiceovers || '[]');
@@ -262,7 +264,10 @@ const selectGroup = async (groupId) => {
       }
 
       for (const vo of voiceoversList) {
-        const found = availableAudios.find(a => getAudioFullName(a).toLowerCase().includes(vo.toLowerCase()));
+        // Ищем подстроку ТОЛЬКО в авторе (author), а не в языке, для точного метчинга
+        const found = availableAudios.find(a =>
+            (a.meta_info?.author || '').toLowerCase().includes(vo.toLowerCase())
+        );
         if (found) {
           matchedAudio = found;
           break;

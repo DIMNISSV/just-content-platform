@@ -186,8 +186,9 @@ def player_manifest(request, content_type_str, object_id):
                         "type": extra.asset.type,
                         "sync_group_id": str(tg.id),
                         "group_title": tg.name,
+                        "group_author": tg.author,
                         "offset_ms": extra.offset_ms,
-                        "meta_info": {"language": extra.language},
+                        "meta_info": {"language": extra.language, "author": extra.author},
                         "qualities": qualities,
                         "active_path": qualities[0]["storage_path"]
                     })
@@ -472,14 +473,15 @@ def save_workbench(request, content_type_str, object_id):
         return Response({"error": "Invalid Video Asset"}, status=status.HTTP_400_BAD_REQUEST)
 
     # 1. Создаем или обновляем базовую группу (TrackGroup)
+    author = data.get('author', '')
     track_group = TrackGroup.objects.create(
         name=group_name,
+        author=author,
         content_type=ctype,
         object_id=object_id,
         video_asset=video_asset
     )
 
-    # 2. Добавляем аудиодорожки и субтитры
     for t in tracks:
         try:
             asset = Asset.objects.get(id=t['asset_id'])
@@ -487,6 +489,7 @@ def save_workbench(request, content_type_str, object_id):
                 track_group=track_group,
                 asset=asset,
                 language=t.get('language', 'Unknown'),
+                author=t.get('author', ''),
                 offset_ms=t.get('offset_ms', 0)
             )
         except Asset.DoesNotExist:
@@ -673,8 +676,10 @@ def assign_file_api(request):
                     if p_created: new_variants_to_extract.append(p_var.id)
 
             ctype = ContentType.objects.get_for_model(Title if target_type == 'title' else Episode)
+            group_author = request.data.get('group_author', '')
             track_group = TrackGroup.objects.create(
                 name=f"Version {(raw_file.original_name or 'New')[:30]}",
+                author=group_author,
                 content_type=ctype,
                 object_id=target_id,
                 video_asset=video_asset
@@ -699,6 +704,7 @@ def assign_file_api(request):
                 AdditionalTrack.objects.create(
                     track_group=track_group, asset=audio_asset,
                     language=s_info.get('language', 'Unknown'),
+                    author=s_info.get('author', ''),
                     offset_ms=s_info.get('offset_ms', 0)
                 )
 

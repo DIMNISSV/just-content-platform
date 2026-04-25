@@ -144,7 +144,7 @@ const handleAssignDrop = (dropData) => {
   showStreamModal.value = true;
 };
 
-const confirmStreamSelection = async (selectedStreams) => {
+const confirmStreamSelection = async (selectedStreams, groupAuthor) => {
   const context = selectedFileForModal.value;
   showStreamModal.value = false;
   isLoading.value = true;
@@ -158,7 +158,8 @@ const confirmStreamSelection = async (selectedStreams) => {
         target_id: context.targetId,
         drop_type: context.dropType,
         target_type: context.targetType,
-        selected_streams: selectedStreams
+        selected_streams: selectedStreams,
+        group_author: groupAuthor
       })
     });
 

@@ -11,11 +11,14 @@ const emit = defineEmits(['close', 'confirm']);
 
 const rawStreams = props.file?.metadata?.streams || [];
 
+const groupAuthor = ref('');
+
 const streams = ref(rawStreams.map(s => ({
   ...s,
   selected: false,
   is_video: s.codec_type === 'video',
-  custom_language: s.tags?.language || 'RUS',
+  custom_language: s.tags?.language || 'rus',
+  custom_author: '',
   offset_ms: 0
 })));
 
@@ -31,9 +34,10 @@ const submit = () => {
     index: s.index,
     is_video: s.is_video,
     language: s.custom_language,
+    author: s.custom_author,
     offset_ms: s.offset_ms
   }));
-  emit('confirm', selected);
+  emit('confirm', selected, groupAuthor.value);
 };
 </script>
 
@@ -48,6 +52,12 @@ const submit = () => {
       </div>
 
       <div class="flex-grow overflow-y-auto p-6 space-y-4">
+        <div v-if="dropType === 'new_group'" class="mb-4">
+          <label class="block text-xs font-bold text-gray-500 mb-1">Video Release Group (Optional)</label>
+          <input v-model="groupAuthor" type="text" placeholder="e.g. YIFY, Remux"
+                 class="w-full bg-black border border-gray-700 rounded p-2 text-white">
+        </div>
+
         <div v-if="dropType === 'new_group'"
              class="p-3 bg-blue-900/20 border border-blue-800/50 rounded text-xs text-blue-200">
           ℹ️ You must select exactly one <strong>Video</strong> stream for a new version.
@@ -71,8 +81,13 @@ const submit = () => {
             <!-- Доп. поля для аудио -->
             <div v-if="s.selected && !s.is_video" class="mt-3 flex gap-4">
               <div class="flex-1">
-                <label class="block text-[10px] uppercase font-bold text-gray-500 mb-1">Language</label>
-                <input v-model="s.custom_language" type="text"
+                <label class="block text-[10px] uppercase font-bold text-gray-500 mb-1">Lang Code</label>
+                <input v-model="s.custom_language" type="text" placeholder="rus"
+                       class="w-full bg-black border border-gray-700 rounded p-1.5 text-xs text-white">
+              </div>
+              <div class="flex-1">
+                <label class="block text-[10px] uppercase font-bold text-gray-500 mb-1">Author / Studio</label>
+                <input v-model="s.custom_author" type="text" placeholder="LostFilm"
                        class="w-full bg-black border border-gray-700 rounded p-1.5 text-xs text-white">
               </div>
               <div class="flex-1">

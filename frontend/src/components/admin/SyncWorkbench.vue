@@ -10,8 +10,8 @@ const props = defineProps({
 const assets = ref([]);
 const isLoading = ref(true);
 
-// State for new TrackGroup
 const groupName = ref('Standard Version');
+const groupAuthor = ref('');
 const selectedVideoId = ref('');
 const additionalTracks = ref([]);
 
@@ -31,7 +31,7 @@ const videoAssets = computed(() => assets.value.filter(a => a.type === 'VIDEO'))
 const audioAssets = computed(() => assets.value.filter(a => a.type === 'AUDIO' || a.type === 'SUBTITLE'));
 
 const addTrack = () => {
-  additionalTracks.value.push({asset_id: '', language: 'RUS (Dub)', offset_ms: 0});
+  additionalTracks.value.push({asset_id: '', language: 'rus', author: '', offset_ms: 0});
 };
 
 const removeTrack = (index) => {
@@ -46,6 +46,7 @@ const saveWorkbench = async () => {
 
   const payload = {
     name: groupName.value,
+    author: groupAuthor.value,
     video_asset_id: selectedVideoId.value,
     tracks: additionalTracks.value.filter(t => t.asset_id)
   };
@@ -84,10 +85,15 @@ onMounted(() => {
 
     <div v-else class="space-y-6">
       <!-- 1. Basics -->
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-3 gap-4">
         <div>
           <label class="block text-sm font-bold text-gray-400 mb-1">Version Name</label>
           <input v-model="groupName" type="text"
+                 class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white">
+        </div>
+        <div>
+          <label class="block text-sm font-bold text-gray-400 mb-1">Release Group (Author)</label>
+          <input v-model="groupAuthor" type="text" placeholder="e.g. YIFY"
                  class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white">
         </div>
         <div>
@@ -95,7 +101,7 @@ onMounted(() => {
           <select v-model="selectedVideoId" class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white">
             <option disabled value="">-- Select Video --</option>
             <option v-for="v in videoAssets" :key="v.id" :value="v.id">
-              {{ v.original_name }} ({{ v.variants.length }} qualities) [ID: {{ v.id.substring(0,6) }}]
+              {{ v.original_name }} ({{ v.variants.length }} qualities)[ID: {{ v.id.substring(0, 6) }}]
             </option>
           </select>
         </div>
@@ -119,21 +125,26 @@ onMounted(() => {
              class="flex items-end gap-4 mb-3 bg-gray-900 p-3 rounded">
           <div class="flex-1">
             <label class="block text-xs text-gray-400 mb-1">Asset</label>
-            <select v-model="track.asset_id" class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
+            <select v-model="track.asset_id"
+                    class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
               <option disabled value="">-- Select Track --</option>
-              <option v-for="a in audioAssets" :key="a.id" :value="a.id">
-                [{{ a.type }}] {{ a.original_name }} ({{ a.variants.length }} qual)
-              </option>
+              <option v-for="a in audioAssets" :key="a.id" :value="a.id">[{{ a.type }}] {{ a.original_name }}</option>
             </select>
           </div>
 
-          <div class="w-32">
-            <label class="block text-xs text-gray-400 mb-1">Language</label>
-            <input v-model="track.language" type="text"
+          <div class="w-24">
+            <label class="block text-xs text-gray-400 mb-1">Lang Code</label>
+            <input v-model="track.language" type="text" placeholder="rus"
                    class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
           </div>
 
-          <div class="w-32">
+          <div class="w-40">
+            <label class="block text-xs text-gray-400 mb-1">Voiceover Studio</label>
+            <input v-model="track.author" type="text" placeholder="LostFilm"
+                   class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
+          </div>
+
+          <div class="w-24">
             <label class="block text-xs text-gray-400 mb-1">Offset (ms)</label>
             <input v-model.number="track.offset_ms" type="number"
                    class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
