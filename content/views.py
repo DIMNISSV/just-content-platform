@@ -1,3 +1,5 @@
+import json
+
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.contenttypes.models import ContentType
@@ -279,6 +281,7 @@ def player_telemetry(request):
     episode_id = data.get('episode_id')
     track_group_id = data.get('track_group_id')
     audio_asset_id = data.get('audio_asset_id')
+    audio_track_name = data.get('audio_track_name')
     quality_label = data.get('quality_label')
     progress_ms = data.get('progress_ms', 0)
     is_completed = data.get('is_completed', False)
@@ -290,6 +293,7 @@ def player_telemetry(request):
             'episode_id': episode_id if episode_id else None,
             'track_group_id': track_group_id if track_group_id else None,
             'last_audio_asset_id': audio_asset_id if audio_asset_id else None,
+            'last_audio_track_name': audio_track_name if audio_track_name else None,
             'last_quality_label': quality_label,
             'progress_ms': progress_ms,
             'is_completed': is_completed
@@ -400,24 +404,39 @@ class WatchView(DetailView):
         context['start_progress'] = 0
         context['last_track_group'] = ''
         context['last_audio_asset'] = ''
+        context['last_audio_track_name'] = ''
         context['last_quality'] = ''
         context['user_title_rating'] = 0
         context['is_favorite'] = 'false'
-        context['pref_audio'] = 'RUS (Dub)'
+        context['language_code'] = 'rus'
+        context['preferred_voiceovers'] = '[]'
         context['auto_skip'] = 'false'
 
+        title_obj = self.object if hasattr(self,
+                                           'object') and self.template_name == 'content/watch.html' and 'Episode' not in str(
+            self.__class__) else getattr(self.object, 'title', self.object)
+
         if self.request.user.is_authenticated:
-            # Настройки профиля
             pref, _ = UserPreference.objects.get_or_create(user=self.request.user)
-            context['pref_audio'] = pref.preferred_language
+            context['language_code'] = pref.language_code
+            context['preferred_voiceovers'] = json.dumps(pref.preferred_voiceovers)
             context['auto_skip'] = 'true' if pref.auto_skip_intro else 'false'
 
-            if Favorite.objects.filter(user=self.request.user, title=self.object).exists():
+            if Favorite.objects.filter(user=self.request.user, title=title_obj).exists():
                 context['is_favorite'] = 'true'
 
-            history = WatchHistory.objects.filter(user=self.request.user, title=self.object).first()
+            history = WatchHistory.objects.filter(user=self.request.user, title=title_obj).first()
             if history:
-                context['start_progress'] = history.progress_ms
+                context['last_track_group'] = history.track_group_id or ''
+                context['last_audio_asset'] = str(history.last_audio_asset_id) if history.last_audio_asset_id else ''
+                context['last_audio_track_name'] = history.last_audio_track_name or ''
+                context['last_quality'] = history.last_quality_label or ''
+                if hasattr(self.object, 'season_number'):  # Проверка для EpisodeWatchView
+                    if history.episode_id == self.object.id:
+                        context['start_progress'] = history.progress_ms
+                else:
+                    context['start_progress'] = history.progress_ms
+
                 context['last_track_group'] = history.track_group_id or ''
                 context['last_audio_asset'] = str(history.last_audio_asset_id) if history.last_audio_asset_id else ''
                 context['last_quality'] = history.last_quality_label or ''
@@ -495,23 +514,37 @@ class EpisodeWatchView(DetailView):
         context['start_progress'] = 0
         context['last_track_group'] = ''
         context['last_audio_asset'] = ''
+        context['last_audio_track_name'] = ''
         context['last_quality'] = ''
         context['user_title_rating'] = 0
         context['is_favorite'] = 'false'
-        context['pref_audio'] = 'RUS (Dub)'
+        context['language_code'] = 'rus'
+        context['preferred_voiceovers'] = '[]'
         context['auto_skip'] = 'false'
+
+        title_obj = self.object if hasattr(self,
+                                           'object') and self.template_name == 'content/watch.html' and 'Episode' not in str(
+            self.__class__) else getattr(self.object, 'title', self.object)
 
         if self.request.user.is_authenticated:
             pref, _ = UserPreference.objects.get_or_create(user=self.request.user)
-            context['pref_audio'] = pref.preferred_language
+            context['language_code'] = pref.language_code
+            context['preferred_voiceovers'] = json.dumps(pref.preferred_voiceovers)
             context['auto_skip'] = 'true' if pref.auto_skip_intro else 'false'
 
-            history = WatchHistory.objects.filter(user=self.request.user, title=title).first()
+            if Favorite.objects.filter(user=self.request.user, title=title_obj).exists():
+                context['is_favorite'] = 'true'
+
+            history = WatchHistory.objects.filter(user=self.request.user, title=title_obj).first()
             if history:
                 context['last_track_group'] = history.track_group_id or ''
                 context['last_audio_asset'] = str(history.last_audio_asset_id) if history.last_audio_asset_id else ''
+                context['last_audio_track_name'] = history.last_audio_track_name or ''
                 context['last_quality'] = history.last_quality_label or ''
-                if history.episode_id == self.object.id:
+                if hasattr(self.object, 'season_number'):  # Проверка для EpisodeWatchView
+                    if history.episode_id == self.object.id:
+                        context['start_progress'] = history.progress_ms
+                else:
                     context['start_progress'] = history.progress_ms
 
             rating = TitleRating.objects.filter(user=self.request.user, title=title).first()

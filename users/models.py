@@ -36,7 +36,10 @@ class User(AbstractUser):
 
 class UserPreference(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='preferences')
-    preferred_language = models.CharField(max_length=50, default='RUS (Dub)', help_text="Предпочитаемый язык озвучки")
+    language_code = models.CharField(max_length=20, default='rus',
+                                     help_text="Жесткое ограничение языка (напр. rus, eng)")
+    preferred_voiceovers = models.JSONField(default=list, blank=True,
+                                            help_text="Массив приоритетов (напр. ['LostFilm', 'HDrezka'])")
     auto_skip_intro = models.BooleanField(default=False, help_text="Автоматически пропускать заставки")
 
     def __str__(self):

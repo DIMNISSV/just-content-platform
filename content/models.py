@@ -144,6 +144,7 @@ class WatchHistory(models.Model):
     # Optional: Remember user's preferred voiceover/track group
     track_group = models.ForeignKey(TrackGroup, on_delete=models.SET_NULL, null=True, blank=True)
     last_audio_asset_id = models.UUIDField(null=True, blank=True, help_text="ID конкретного Asset аудио")
+    last_audio_track_name = models.CharField(max_length=255, blank=True, null=True, help_text="Точная строка названия дорожки")
     last_quality_label = models.CharField(max_length=50, blank=True, null=True, help_text="Напр: 1080p")
 
     progress_ms = models.PositiveIntegerField(default=0, help_text="Current playback position in milliseconds")

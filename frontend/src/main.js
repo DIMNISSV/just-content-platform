@@ -56,8 +56,10 @@ document.addEventListener('DOMContentLoaded', () => {
             startProgress: playerMount.dataset.startProgress,
             lastTrackGroup: playerMount.dataset.lastTrackGroup,
             lastAudioAsset: playerMount.dataset.lastAudioAsset,
+            lastAudioTrackName: playerMount.dataset.lastAudioTrackName,
             lastQuality: playerMount.dataset.lastQuality,
-            prefAudio: playerMount.dataset.prefAudio,
+            languageCode: playerMount.dataset.languageCode,
+            preferredVoiceovers: playerMount.dataset.preferredVoiceovers,
             autoSkip: playerMount.dataset.autoSkip,
             csrfToken: playerMount.dataset.csrf
         });

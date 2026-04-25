@@ -6,4 +6,4 @@ from .models import UserPreference
 class UserPreferenceSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserPreference
-        fields = ['preferred_language', 'auto_skip_intro']
+        fields = ['language_code', 'preferred_voiceovers', 'auto_skip_intro']

@@ -15,11 +15,18 @@ const props = defineProps({
   startProgress: {type: [String, Number], default: 0},
   lastTrackGroup: {type: [String, Number], default: ''},
   lastAudioAsset: {type: String, default: ''},
+  lastAudioTrackName: {type: String, default: ''},
   lastQuality: {type: String, default: ''},
-  prefAudio: {type: String, default: 'RUS (Dub)'},
+  languageCode: {type: String, default: 'rus'},
+  preferredVoiceovers: {type: String, default: '[]'},
   autoSkip: {type: [Boolean, String], default: false},
   csrfToken: {type: String, required: true}
 });
+
+const getAudioFullName = (audioObj) => {
+  if (!audioObj) return '';
+  return (audioObj.provider ? `[${audioObj.provider}] ` : '') + (audioObj.meta_info?.language || 'Dub');
+};
 
 const videoRef = ref(null);
 const autoSkipTriggered = ref(false);
@@ -228,19 +235,46 @@ const selectGroup = async (groupId) => {
   activeVideo.value = group.video;
 
   if (group.audios.length > 0) {
-    if (props.lastAudioAsset) {
-      const rememberedAudio = group.audios.find(a => a.asset_id === props.lastAudioAsset);
-      activeAudio.value = rememberedAudio || group.audios[0];
-    } else if (props.prefAudio) {
-      // Ищем дорожку, язык которой включает в себя preferred_language
-      const prefAudioMatch = group.audios.find(a =>
-          a.meta_info && a.meta_info.language &&
-          a.meta_info.language.toLowerCase().includes(props.prefAudio.toLowerCase())
-      );
-      activeAudio.value = prefAudioMatch || group.audios[0];
-    } else {
-      activeAudio.value = group.audios[0];
+    let matchedAudio = null;
+
+    // Шаг 1: Точное совпадение из истории просмотров
+    if (props.lastAudioTrackName) {
+      matchedAudio = group.audios.find(a => getAudioFullName(a).toLowerCase() === props.lastAudioTrackName.toLowerCase());
     }
+
+    // Шаг 2 & 3: Фильтрация по коду языка и применение приоритетов
+    if (!matchedAudio) {
+      let availableAudios = group.audios;
+
+      // Жёсткий фильтр языка (если задан)
+      if (props.languageCode) {
+        const filtered = group.audios.filter(a =>
+            (a.meta_info?.language || '').toLowerCase().includes(props.languageCode.toLowerCase())
+        );
+        if (filtered.length > 0) availableAudios = filtered; // Применяем фильтр только если он не исключает ВСЕ дорожки
+      }
+
+      // Применение списка приоритетных озвучек (preferred_voiceovers)
+      let voiceoversList = [];
+      try {
+        voiceoversList = JSON.parse(props.preferredVoiceovers || '[]');
+      } catch (e) {
+      }
+
+      for (const vo of voiceoversList) {
+        const found = availableAudios.find(a => getAudioFullName(a).toLowerCase().includes(vo.toLowerCase()));
+        if (found) {
+          matchedAudio = found;
+          break;
+        }
+      }
+
+      // Фолбэк, если ничего не совпало
+      if (!matchedAudio && availableAudios.length > 0) {
+        matchedAudio = availableAudios[0];
+      }
+    }
+    activeAudio.value = matchedAudio || group.audios[0];
   } else {
     activeAudio.value = null;
   }
@@ -471,12 +505,9 @@ const sendTelemetry = async () => {
   const isCompleted = dur > 0 && (videoRef.value.currentTime / dur) > 0.95;
   const tGroupId = parseInt(activeGroupId.value);
 
-  let currentQualityLabel = null;
-  if (activeVideo.value && activeVideo.value.qualities) {
-    const q = activeVideo.value.qualities.find(q => q.storage_path === activeVideo.value.active_path);
-    if (q) currentQualityLabel = q.label;
-  }
+  const currentQualityLabel = activeVideo.value?.qualities?.find(q => q.storage_path === activeVideo.value.active_path)?.label || null;
   const currentAudioAssetId = activeAudio.value ? activeAudio.value.asset_id : null;
+  const currentAudioTrackName = getAudioFullName(activeAudio.value); // Добавляем сохранение имени
 
   try {
     await fetch('/api/v1/player/telemetry/', {
@@ -487,6 +518,7 @@ const sendTelemetry = async () => {
         episode_id: props.episodeId || null,
         track_group_id: isNaN(tGroupId) ? null : tGroupId,
         audio_asset_id: currentAudioAssetId,
+        audio_track_name: currentAudioTrackName, // Отправляем в бэкенд
         quality_label: currentQualityLabel,
         progress_ms: currentMs,
         is_completed: isCompleted

@@ -3,7 +3,8 @@ import {onMounted, ref} from 'vue';
 
 const props = defineProps({csrfToken: String});
 
-const prefs = ref({preferred_language: 'RUS (Dub)', auto_skip_intro: false});
+const prefs = ref({language_code: 'rus', preferred_voiceovers: [], auto_skip_intro: false});
+const voiceoversInput = ref('');
 const isSaving = ref(false);
 const saveMessage = ref('');
 
@@ -31,12 +32,16 @@ const fetchDashboardData = async () => {
       fetch('/api/v1/content/titles/favorites/')
     ]);
 
-    if (prefRes.ok) prefs.value = await prefRes.json();
+    if (prefRes.ok) {
+      prefs.value = await prefRes.json();
+      voiceoversInput.value = (prefs.value.preferred_voiceovers || []).join(', ');
+    }
     if (histRes.ok) history.value = await histRes.json();
     if (favRes.ok) {
       const favData = await favRes.json();
       favorites.value = favData.results || favData;
     }
+
   } catch (e) {
     console.error("Dashboard data load failed", e);
   } finally {
@@ -47,6 +52,7 @@ const fetchDashboardData = async () => {
 const updatePreferences = async () => {
   isSaving.value = true;
   saveMessage.value = '';
+  prefs.value.preferred_voiceovers = voiceoversInput.value.split(',').map(s => s.trim()).filter(s => s);
   try {
     const res = await fetch('/api/v1/users/preferences/', {
       method: 'PATCH',
@@ -83,14 +89,26 @@ onMounted(fetchDashboardData);
 
         <div class="space-y-6">
           <div>
-            <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Preferred Audio Language</label>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Language Code Filter</label>
             <input
-                v-model="prefs.preferred_language"
+                v-model="prefs.language_code"
                 type="text"
-                placeholder="e.g. RUS (Dub) or ENG"
+                placeholder="e.g. rus, eng, jpn"
                 class="w-full bg-black border border-gray-700 rounded p-2 text-white focus:border-brand outline-none text-sm"
             >
-            <p class="text-[10px] text-gray-600 mt-1">Player will automatically select this track if available.</p>
+            <p class="text-[10px] text-gray-600 mt-1">Strict filter for audio tracks (e.g. "rus").</p>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Priority Voiceovers</label>
+            <textarea
+                v-model="voiceoversInput"
+                rows="3"
+                placeholder="LostFilm, HDrezka, TVShows..."
+                class="w-full bg-black border border-gray-700 rounded p-2 text-white focus:border-brand outline-none text-sm resize-none"
+            ></textarea>
+            <p class="text-[10px] text-gray-600 mt-1">Comma-separated list of studios from highest priority to
+              lowest.</p>
           </div>
 
           <label class="flex items-center gap-3 cursor-pointer group">
