@@ -87,7 +87,13 @@ const promptCreateEpisode = (titleId) => {
                    class="p-3 border border-gray-700 rounded bg-gray-800/50 hover:border-blue-500 transition-colors border-dashed relative group/version">
 
                 <div class="text-xs font-black uppercase text-gray-400 mb-2 flex justify-between items-center">
-                  <span>{{ group.name }}</span>
+                  <div class="flex items-center gap-2">
+                    <span>{{ group.name }}</span>
+                    <span v-if="group.author"
+                          class="text-[9px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/30">
+                      {{ group.author }}
+                    </span>
+                  </div>
                   <button @click="emit('delete-group', group.id)"
                           class="opacity-0 group-hover/version:opacity-100 text-gray-500 hover:text-brand transition-opacity">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -101,7 +107,9 @@ const promptCreateEpisode = (titleId) => {
                   <div v-for="asset in group.assets" :key="asset.id"
                        class="text-[10px] font-bold px-2 py-1 rounded border flex items-center gap-1.5"
                        :class="asset.type === 'VIDEO' ? 'bg-blue-900/30 text-blue-300 border-blue-800' : 'bg-green-900/30 text-green-300 border-green-800 group/asset'">
-                    {{ asset.type }}: {{ asset.name }}
+                    <span class="opacity-70">{{ asset.type }}:</span>
+                    <span>{{ asset.author || 'Original' }}</span>
+                    <span class="text-[9px] font-mono opacity-60">({{ asset.name.toUpperCase() }})</span>
                     <button v-if="asset.type !== 'VIDEO'" @click="emit('delete-track', asset.link_id)"
                             class="opacity-0 group-hover/asset:opacity-100 hover:text-white text-green-600">×
                     </button>

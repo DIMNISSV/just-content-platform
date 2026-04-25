@@ -158,10 +158,17 @@ def player_manifest(request, content_type_str, object_id):
 
     sources = []
     for tg in track_groups:
+        # 1.1 VIDEO
         if tg.video_asset:
             v_variants = tg.video_asset.variants.filter(status='READY').order_by('-preset__width')
-            qualities = [{"variant_id": str(v.id), "label": v.quality_label or "Original",
-                          "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"} for v in v_variants]
+            qualities = [
+                {
+                    "variant_id": str(v.id),
+                    "label": v.quality_label or "Original",
+                    "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"
+                } for v in v_variants
+            ]
+
             if qualities:
                 sources.append({
                     "id": f"video_{tg.id}",
@@ -169,16 +176,24 @@ def player_manifest(request, content_type_str, object_id):
                     "type": "VIDEO",
                     "sync_group_id": str(tg.id),
                     "group_title": tg.name,
+                    "group_author": tg.author,  # <-- ДОБАВЛЕНО СЮДА
                     "offset_ms": 0,
                     "qualities": qualities,
                     "active_path": qualities[0]["storage_path"]
                 })
 
+        # 1.2 AUDIO & SUBTITLES
         for extra in tg.additional_tracks.all():
             if extra.asset:
                 a_variants = extra.asset.variants.filter(status='READY')
-                qualities = [{"variant_id": str(v.id), "label": v.quality_label or "Original",
-                              "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"} for v in a_variants]
+                qualities = [
+                    {
+                        "variant_id": str(v.id),
+                        "label": v.quality_label or "Original",
+                        "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"
+                    } for v in a_variants
+                ]
+
                 if qualities:
                     sources.append({
                         "id": f"extra_{extra.id}",
@@ -592,25 +607,27 @@ def content_tree_api(request):
 
     tree = []
     for t in titles:
-        # Для краткости примера логика для Title и Episode идентична
         def serialize_groups(obj):
             groups = []
             for tg in obj.track_groups.all():
                 assets = [{
                     'id': tg.video_asset.id,
                     'type': 'VIDEO',
-                    'name': 'Base Video'
+                    'name': 'Base Video',
+                    'author': tg.author
                 }]
                 for track in tg.additional_tracks.all():
                     assets.append({
                         'id': track.asset.id,
                         'link_id': track.id,
                         'type': 'AUDIO',
-                        'name': track.language
+                        'name': track.language,
+                        'author': track.author
                     })
                 groups.append({
                     'id': tg.id,
                     'name': tg.name,
+                    'author': tg.author,
                     'assets': assets
                 })
             return groups

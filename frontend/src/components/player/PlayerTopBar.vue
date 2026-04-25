@@ -50,7 +50,9 @@ const rateTrack = (score) => {
         <option value="original" class="bg-gray-900">Original</option>
         <option v-for="a in currentGroupAudios" :key="a.id" :value="a.id" class="bg-gray-900"
                 :selected="activeAudioId === a.id">
-          {{ a.provider ? `[${a.provider}] ` : '' }}{{ a.meta_info?.language || 'Dub' }}
+          {{ a.meta_info?.author || 'Original' }}
+          ({{ (a.meta_info?.language || '??').toUpperCase() }})
+          {{ a.provider ? `[${a.provider}] ` : '' }}
         </option>
       </select>
     </div>
@@ -64,7 +66,7 @@ const rateTrack = (score) => {
       <select :value="activeGroupId" @change="onGroupChange"
               class="bg-transparent text-white text-sm font-semibold outline-none px-2 py-1.5 cursor-pointer appearance-none max-w-[200px] truncate">
         <option v-for="(group, id) in groupedSources" :key="id" :value="id" class="bg-gray-900">
-          {{ group.title }}
+          {{ group.author ? group.author : group.title ? group.title : '?' }}
         </option>
       </select>
 

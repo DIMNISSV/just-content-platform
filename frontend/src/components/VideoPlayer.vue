@@ -160,9 +160,11 @@ const processSources = (sources) => {
   const floatingAudios = [];
 
   sources.forEach(source => {
+    // 1. Обработка внешних плееров (Iframe)
     if (source.type === 'EXTERNAL_PLAYER') {
       groups[source.asset_id] = {
         title: source.group_title || source.provider || 'External Source',
+        author: source.provider,
         video: source,
         audios: []
       };
@@ -170,27 +172,48 @@ const processSources = (sources) => {
     }
 
     const gid = source.sync_group_id;
+
+    // 2. Если нет ID группы — это "плавающая" дорожка (например, из глобального плагина)
     if (!gid) {
-      if (source.type === 'AUDIO') floatingAudios.push(source);
+      if (source.type === 'AUDIO' || source.type === 'SUBTITLE') {
+        floatingAudios.push(source);
+      }
       return;
     }
 
-    if (!groups[gid]) groups[gid] = {title: source.group_title || 'Default', video: null, audios: []};
+    // 3. Инициализация группы, если еще не создана
+    if (!groups[gid]) {
+      groups[gid] = {
+        title: source.group_title || 'Default',
+        author: source.group_author || '',
+        video: null,
+        audios: []
+      };
+    }
 
-    if (source.type === 'VIDEO') groups[gid].video = source;
-    else if (source.type === 'AUDIO' || source.type === 'SUBTITLE') groups[gid].audios.push(source);
+    // 4. Распределение по типам внутри группы
+    if (source.type === 'VIDEO') {
+      groups[gid].video = source;
+      // Приоритет автора группы берем из видео-файла, если он там есть
+      if (source.group_author) {
+        groups[gid].author = source.group_author;
+      }
+    } else if (source.type === 'AUDIO' || source.type === 'SUBTITLE') {
+      groups[gid].audios.push(source);
+    }
   });
 
-  // Приклеиваем "плавающие" внешние аудиодорожки ко всем локальным видеогруппам
+  // 5. Приклеиваем "плавающие" аудиодорожки ко всем валидным видеогруппам
   Object.values(groups).forEach(group => {
     if (group.video && group.video.type === 'VIDEO') {
       floatingAudios.forEach(fa => {
+        // Клонируем дорожку, чтобы не мутировать исходный объект
         group.audios.push({...fa, sync_group_id: group.video.sync_group_id});
       });
     }
   });
 
-  groupedSources.value = {...groupedSources.value, ...groups};
+  groupedSources.value = {...groups};
 };
 
 const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
