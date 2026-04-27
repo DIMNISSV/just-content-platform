@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
-from content.models import Title, Episode
+from content.models import Title, Episode, AdditionalTrack, TrackGroup
 from media.models import AssetVariant, Asset
 from .models import PluginProvider, ExternalContentRegistry
 
@@ -181,3 +181,49 @@ def asset_sync_view(request):
     except Exception as e:
         logger.error(f"Error syncing asset {asset_id}: {str(e)}")
         return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def track_group_sync_view(request):
+    # 1. Auth check (используем уже написанный check_provider_auth или inline)
+    auth_header = request.headers.get('Authorization')
+    token = auth_header.split(' ')[1] if auth_header else ''
+    provider = PluginProvider.objects.filter(api_token=token, is_active=True).first()
+
+    if not provider:
+        return Response({"error": "Unauthorized"}, status=401)
+
+    data = request.data
+    try:
+        with transaction.atomic():
+            from django.contrib.contenttypes.models import ContentType
+            ctype = ContentType.objects.get(app_label='content', model=data['content_type'])
+
+            # Создаем/обновляем группу
+            tg, _ = TrackGroup.objects.update_or_create(
+                id=data['tg_id'],
+                defaults={
+                    'name': data['name'],
+                    'author': data['author'],
+                    'provider': provider,
+                    'content_type': ctype,
+                    'object_id': data['object_id'],
+                    'video_asset_id': data['video_asset_id']
+                }
+            )
+
+            # Обновляем треки
+            tg.additional_tracks.all().delete()
+            for t_data in data['tracks']:
+                AdditionalTrack.objects.create(
+                    track_group=tg,
+                    asset_id=t_data['asset_id'],
+                    language=t_data['language'],
+                    author=t_data['author'],
+                    offset_ms=t_data['offset_ms']
+                )
+
+        return Response({"status": "synced"})
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)

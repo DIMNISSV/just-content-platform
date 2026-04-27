@@ -515,6 +515,10 @@ def save_workbench(request, content_type_str, object_id):
         except Asset.DoesNotExist:
             continue
 
+    if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'NODE':
+        from .tasks import push_track_group_to_hub
+        transaction.on_commit(lambda: push_track_group_to_hub.delay(track_group.id))
+
     return Response({"status": "success", "track_group_id": track_group.id})
 
 
