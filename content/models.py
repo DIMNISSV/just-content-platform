@@ -63,6 +63,7 @@ class TrackGroup(models.Model):
     """
     Аналог SyncGroup. Объединяет базовое ВИДЕО (Asset) и привязывает его к контенту.
     """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, default='Default Version',
                             help_text="Например: Театральная версия, Director's Cut")
     author = models.CharField(max_length=100, blank=True,
@@ -101,6 +102,7 @@ class AdditionalTrack(models.Model):
     Связывает Аудио или Субтитры (Asset) с конкретной сборкой (TrackGroup).
     Здесь задается offset_ms для синхронизации в плеере.
     """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     track_group = models.ForeignKey(TrackGroup, on_delete=models.CASCADE, related_name='additional_tracks')
     asset = models.ForeignKey(
         'media.Asset',

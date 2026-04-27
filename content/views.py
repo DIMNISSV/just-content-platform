@@ -833,6 +833,13 @@ class TrackGroupViewSet(mixins.DestroyModelMixin, viewsets.GenericViewSet):
     queryset = TrackGroup.objects.all()
     permission_classes = [IsAdminUser]
 
+    def perform_destroy(self, instance):
+        tg_id = str(instance.id)
+        instance.delete()
+        if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'NODE':
+            from .tasks import push_delete_track_group_to_hub
+            push_delete_track_group_to_hub.delay(tg_id)
+
 
 class AdditionalTrackViewSet(mixins.DestroyModelMixin, viewsets.GenericViewSet):
     queryset = AdditionalTrack.objects.all()

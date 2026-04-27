@@ -13,10 +13,11 @@ class AssetSerializer(serializers.ModelSerializer):
     original_name = serializers.CharField(source='source_stream.raw_file.original_name', read_only=True,
                                           default='Unknown Source')
     variants = AssetVariantSerializer(many=True, read_only=True)
+    provider_name = serializers.CharField(source='provider.name', read_only=True, default='Local')
 
     class Meta:
         model = Asset
-        fields = ['id', 'type', 'created_at', 'original_name', 'variants']
+        fields = ['id', 'type', 'created_at', 'original_name', 'variants', 'provider_name']
 
 
 class RawFileSerializer(serializers.ModelSerializer):

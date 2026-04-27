@@ -4,9 +4,10 @@ import requests
 from django.conf import settings
 from rest_framework import viewsets
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, AllowAny
 from rest_framework.response import Response
 
+from aggregator.utils import check_provider_auth
 from .models import Asset, AssetVariant, RawMediaFile
 from .serializers import AssetSerializer, RawFileSerializer
 
@@ -46,7 +47,18 @@ class AssetViewSet(viewsets.ReadOnlyModelViewSet):
             'variants', 'provider'
         ).distinct().order_back('-created_at')
 
+    def get_permissions(self):
+        # Если это HUB и в запросе есть Bearer токен — разрешаем (проверка токена будет в list)
+        if getattr(settings, 'PLATFORM_ROLE', 'HUB') == 'HUB':
+            return [AllowAny()]
+        return [IsAdminUser()]
+
     def list(self, request, *args, **kwargs):
+        # Проверка авторизации для HUB (от Провайдеров)
+        if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'HUB':
+            if not check_provider_auth(request) and not request.user.is_staff:
+                return Response({"error": "Unauthorized"}, status=401)
+
         # 1. Получаем локальные ассеты через стандартный механизм
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
