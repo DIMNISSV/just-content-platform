@@ -165,7 +165,7 @@ def player_manifest(request, content_type_str, object_id):
                 {
                     "variant_id": str(v.id),
                     "label": v.quality_label or "Original",
-                    "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"
+                    "storage_path": v.get_absolute_url()
                 } for v in v_variants
             ]
 
@@ -190,7 +190,7 @@ def player_manifest(request, content_type_str, object_id):
                     {
                         "variant_id": str(v.id),
                         "label": v.quality_label or "Original",
-                        "storage_path": f"{settings.MEDIA_URL}{v.storage_path}"
+                        "storage_path": v.get_absolute_url()
                     } for v in a_variants
                 ]
 

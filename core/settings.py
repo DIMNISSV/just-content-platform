@@ -30,6 +30,9 @@ SECRET_KEY = env('SECRET_KEY', default='unsafe-dev-key-change-me')
 
 DEBUG = env('DEBUG')
 
+PLATFORM_ROLE = env('PLATFORM_ROLE', default='NODE')  # Choices: 'HUB' or 'NODE'
+HUB_URL = env('HUB_URL', default='')
+
 ALLOWED_HOSTS = ['*']
 
 # Application definition

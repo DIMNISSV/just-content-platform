@@ -66,7 +66,17 @@ class TrackGroup(models.Model):
     """
     name = models.CharField(max_length=100, default='Default Version',
                             help_text="Например: Театральная версия, Director's Cut")
-    author = models.CharField(max_length=100, blank=True, help_text="Релиз-группа или автор видео-сборки (напр. YIFY, HQCLUB)")
+    author = models.CharField(max_length=100, blank=True,
+                              help_text="Релиз-группа или автор видео-сборки (напр. YIFY, HQCLUB)")
+
+    provider = models.ForeignKey(
+        'aggregator.PluginProvider',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='track_groups',
+        help_text="Provider that created this track group. Null means local Hub/Node."
+    )
 
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()

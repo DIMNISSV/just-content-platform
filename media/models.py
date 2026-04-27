@@ -1,5 +1,7 @@
 import uuid
 
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
 
@@ -84,6 +86,14 @@ class Asset(models.Model):
         SUBTITLE = 'SUBTITLE', 'Subtitle'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    provider = models.ForeignKey(
+        'aggregator.PluginProvider',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assets',
+        help_text="Provider owning this asset. Null means local (Node) asset."
+    )
     source_stream = models.ForeignKey(MediaStream, on_delete=models.SET_NULL, null=True, blank=True,
                                       related_name='extracted_assets')
     type = models.CharField(max_length=20, choices=Type.choices)
@@ -115,6 +125,27 @@ class AssetVariant(models.Model):
     storage_path = models.CharField(max_length=512, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def get_absolute_url(self):
+        from django.conf import settings
+        from urllib.parse import urlparse, urlunparse
+
+        path = self.storage_path.lstrip('/')
+
+        # If the asset belongs to a provider, construct the remote URL
+        if self.asset.provider and self.asset.provider.endpoint_url:
+            parsed = urlparse(self.asset.provider.endpoint_url)
+            # Extract just the origin (scheme + domain)
+            base_url = urlunparse((parsed.scheme, parsed.netloc, '', '', '', ''))
+
+            # Note: We assume the remote node uses standard settings.MEDIA_URL prefix
+            # Alternatively, remote nodes should supply the full path in storage_path
+            if path.startswith('http://') or path.startswith('https://'):
+                return path
+            return f"{base_url}/{settings.MEDIA_URL.lstrip('/')}{path}"
+
+        # Local asset
+        return f"/{settings.MEDIA_URL.lstrip('/')}{path}"
 
     def __str__(self):
         label = self.quality_label or "Original"
