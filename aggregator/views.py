@@ -1,5 +1,6 @@
 import logging
 
+from django.db import transaction
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -7,6 +8,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from content.models import Title, Episode
+from media.models import AssetVariant, Asset
 from .models import PluginProvider, ExternalContentRegistry
 
 logger = logging.getLogger(__name__)
@@ -110,3 +112,72 @@ def plugin_webhook_view(request):
         logger.error(f"Error saving registry entry: {str(e)}")
         return Response({"error": "Internal server error during registration"},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def asset_sync_view(request):
+    """
+    Принимает метаданные об успешно сгенерированном Ассете от узла Провайдера (NODE).
+    Ожидаемый формат JSON:
+    {
+        "asset_id": "uuid",
+        "type": "VIDEO",
+        "variants":[
+            {
+                "variant_id": "uuid",
+                "quality_label": "1080p",
+                "storage_path": "assets/..."
+            }
+        ]
+    }
+    """
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return Response({"error": "Missing or invalid Authorization header"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    token = auth_header.split(' ')[1]
+    try:
+        # Аутентификация Провайдера по токену
+        plugin = PluginProvider.objects.get(api_token=token, is_active=True)
+    except PluginProvider.DoesNotExist:
+        return Response({"error": "Invalid token or inactive provider"}, status=status.HTTP_403_FORBIDDEN)
+
+    data = request.data
+    asset_id = data.get('asset_id')
+    asset_type = data.get('type')
+    variants_data = data.get('variants', [])
+
+    if not asset_id or not asset_type:
+        return Response({"error": "asset_id and type are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        with transaction.atomic():
+            # Создаем или обновляем виртуальный Asset, привязанный к Провайдеру
+            asset, created = Asset.objects.update_or_create(
+                id=asset_id,
+                defaults={
+                    'type': asset_type,
+                    'provider': plugin,
+                }
+            )
+
+            # Синхронизируем готовые варианты
+            for v_data in variants_data:
+                AssetVariant.objects.update_or_create(
+                    id=v_data.get('variant_id'),
+                    defaults={
+                        'asset': asset,
+                        'quality_label': v_data.get('quality_label', ''),
+                        'storage_path': v_data.get('storage_path', ''),
+                        'status': AssetVariant.Status.READY,
+                        'progress': 100
+                    }
+                )
+
+        logger.info(f"Successfully synced virtual Asset {asset_id} from provider {plugin.name}")
+        return Response({"status": "success", "asset_id": str(asset.id)}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Error syncing asset {asset_id}: {str(e)}")
+        return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

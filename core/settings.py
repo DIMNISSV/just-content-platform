@@ -32,6 +32,7 @@ DEBUG = env('DEBUG')
 
 PLATFORM_ROLE = env('PLATFORM_ROLE', default='NODE')  # Choices: 'HUB' or 'NODE'
 HUB_URL = env('HUB_URL', default='')
+HUB_API_TOKEN = env('HUB_API_TOKEN', default='')
 
 ALLOWED_HOSTS = ['*']
 

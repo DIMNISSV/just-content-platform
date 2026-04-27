@@ -6,11 +6,12 @@ import shlex
 import subprocess
 import time
 
+import requests
 from celery import shared_task
 from django.conf import settings
 from django.db import transaction
 
-from .models import RawMediaFile, MediaStream, AssetVariant
+from .models import RawMediaFile, MediaStream, AssetVariant, Asset
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +208,8 @@ def extract_stream_task(variant_id):
             variant.progress = 100
             variant.save()
             logger.info(f"SUCCESS: Variant {variant_id} is READY at {rel_path}")
+            if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'NODE':
+                push_asset_to_hub.delay(asset.id)
         else:
             logger.error(f"FFmpeg process exited with code {process.returncode}")
             variant.status = AssetVariant.Status.ERROR
@@ -220,3 +223,50 @@ def extract_stream_task(variant_id):
             process.kill()
 
     return f"Done: {variant.status}"
+
+
+@shared_task
+def push_asset_to_hub(asset_id):
+    """
+    Собирает данные о готовом Ассете и отправляет их на Основной сайт (HUB).
+    """
+
+    hub_url = getattr(settings, 'HUB_URL', '')
+    hub_token = getattr(settings, 'HUB_API_TOKEN', '')
+    if not hub_url or getattr(settings, 'PLATFORM_ROLE', 'NODE') != 'NODE':
+        return "Push aborted: Not a NODE or HUB_URL is missing."
+    try:
+        asset = Asset.objects.get(id=asset_id)
+    except Asset.DoesNotExist:
+        logger.error(f"Asset {asset_id} not found for sync.")
+        return
+    variants = asset.variants.filter(status=AssetVariant.Status.READY)
+    if not variants.exists():
+        return "No ready variants to sync"
+    payload = {
+        "asset_id": str(asset.id),
+        "type": asset.type,
+        "variants": [
+            {
+                "variant_id": str(v.id),
+                "quality_label": v.quality_label,
+                "storage_path": v.storage_path
+            } for v in variants
+        ]
+    }
+    sync_url = f"{hub_url.rstrip('/')}/api/v1/aggregator/sync/asset/"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {hub_token}"
+    }
+    try:
+        response = requests.post(sync_url, json=payload, headers=headers, timeout=10)
+        if response.status_code == 200:
+            logger.info(f"Successfully synced Asset {asset_id} to HUB.")
+            return f"Synced {asset_id}"
+        else:
+            logger.error(f"Failed to sync Asset {asset_id} to HUB. HTTP {response.status_code}: {response.text}")
+            return f"Sync failed: {response.status_code}"
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error syncing Asset {asset_id} to HUB: {e}")
+        return f"Sync network error"
