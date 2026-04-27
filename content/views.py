@@ -1,16 +1,19 @@
 import json
+import logging
 
+import requests
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.views.generic import DetailView, TemplateView
 from rest_framework import viewsets, filters, status, mixins
 from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
 from rest_framework.response import Response
 
+from aggregator.utils import check_provider_auth
 from media.models import Asset, RawMediaFile, AssetVariant, TranscodingPreset
 from media.tasks import extract_stream_task
 from users.models import UserPreference
@@ -18,6 +21,8 @@ from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory,
     Favorite
 from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, GenreSerializer, \
     EpisodeSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class TitleViewSet(viewsets.ReadOnlyModelViewSet):
@@ -596,58 +601,124 @@ class CatalogView(TemplateView):
 
 
 @api_view(['GET'])
-@permission_classes([IsAdminUser])
 def content_tree_api(request):
-    """Возвращает глубокую иерархию: Title -> Episode -> TrackGroups -> Assets"""
-    titles = Title.objects.prefetch_related(
-        'episodes',
-        'track_groups__additional_tracks__asset',
-        'episodes__track_groups__additional_tracks__asset'
-    ).all()
+    """Возвращает иерархию. Если это NODE — запрашивает у HUB. Если HUB — отдает из БД."""
+    if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'NODE':
+        # Proxy request to HUB
+        hub_url = getattr(settings, 'HUB_URL', '').rstrip('/')
+        hub_token = getattr(settings, 'HUB_API_TOKEN', '')
+        try:
+            resp = requests.get(
+                f"{hub_url}/api/v1/content/tree/",
+                headers={"Authorization": f"Bearer {hub_token}"},
+                timeout=10
+            )
+            return Response(resp.json(), status=resp.status_code)
+        except Exception as e:
+            return Response({"error": f"Hub unreachable: {str(e)}"}, status=503)
 
+    # Логика HUB: проверка авторизации провайдера
+    provider = check_provider_auth(request)
+    if not provider and not request.user.is_staff:
+        return Response({"error": "Unauthorized"}, status=401)
+
+    titles = Title.objects.prefetch_related('episodes', 'track_groups').all()
     tree = []
     for t in titles:
-        def serialize_groups(obj):
-            groups = []
-            for tg in obj.track_groups.all():
-                assets = [{
-                    'id': tg.video_asset.id,
-                    'type': 'VIDEO',
-                    'name': 'Base Video',
-                    'author': tg.author
-                }]
-                for track in tg.additional_tracks.all():
-                    assets.append({
-                        'id': track.asset.id,
-                        'link_id': track.id,
-                        'type': 'AUDIO',
-                        'name': track.language,
-                        'author': track.author
-                    })
-                groups.append({
-                    'id': tg.id,
-                    'name': tg.name,
-                    'author': tg.author,
-                    'assets': assets
-                })
-            return groups
-
         episodes = []
         for ep in t.episodes.all():
             episodes.append({
-                'id': ep.id,
+                'id': str(ep.id),
                 'name': str(ep),
-                'track_groups': serialize_groups(ep)
+                'season': ep.season_number,
+                'number': ep.episode_number
             })
-
         tree.append({
-            'id': t.id,
+            'id': str(t.id),
             'name': t.name,
             'type': t.type,
-            'track_groups': serialize_groups(t),
             'episodes': episodes
         })
     return Response(tree)
+
+
+@api_view(['GET'])
+def metadata_sync_detail_api(request, model_type, uuid_str):
+    """Отдает полные метаданные объекта для зеркалирования на NODE."""
+    provider = check_provider_auth(request)
+    if not provider:
+        return Response({"error": "Unauthorized"}, status=401)
+
+    if model_type == 'title':
+        obj = get_object_or_404(Title, id=uuid_str)
+        return Response({
+            "id": str(obj.id),
+            "name": obj.name,
+            "original_name": obj.original_name,
+            "description": obj.description,
+            "type": obj.type,
+            "release_year": obj.release_year,
+            "genres": [g.name for g in obj.genres.all()]
+        })
+    elif model_type == 'episode':
+        obj = get_object_or_404(Episode, id=uuid_str)
+        return Response({
+            "id": str(obj.id),
+            "title_id": str(obj.title_id),
+            "season_number": obj.season_number,
+            "episode_number": obj.episode_number,
+            "name": obj.name
+        })
+    return Response({"error": "Invalid type"}, status=400)
+
+
+def ensure_metadata_stub(target_id, target_type):
+    """
+    Проверяет наличие объекта в локальной БД. Если нет — скачивает с HUB.
+    """
+    if target_type == 'title':
+        if Title.objects.filter(id=target_id).exists():
+            return True
+        model_name = 'title'
+    else:
+        if Episode.objects.filter(id=target_id).exists():
+            return True
+        model_name = 'episode'
+
+    hub_url = getattr(settings, 'HUB_URL', '').rstrip('/')
+    hub_token = getattr(settings, 'HUB_API_TOKEN', '')
+
+    try:
+        resp = requests.get(
+            f"{hub_url}/api/v1/content/sync/metadata/{model_name}/{target_id}/",
+            headers={"Authorization": f"Bearer {hub_token}"},
+            timeout=5
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if model_name == 'title':
+                Title.objects.create(
+                    id=data['id'],
+                    name=data['name'],
+                    original_name=data['original_name'],
+                    type=data['type'],
+                    release_year=data['release_year']
+                )
+            else:
+                # Для эпизода сначала убеждаемся, что есть тайтл
+                ensure_metadata_stub(data['title_id'], 'title')
+                Episode.objects.create(
+                    id=data['id'],
+                    title_id=data['title_id'],
+                    season_number=data['season_number'],
+                    episode_number=data['episode_number'],
+                    name=data['name']
+                )
+            return True
+    except Exception as e:
+        logger.error(f"Lazy sync failed for {target_id}: {e}")
+
+    return False
 
 
 @api_view(['POST'])
@@ -655,10 +726,14 @@ def content_tree_api(request):
 def assign_file_api(request):
     raw_file_id = request.data.get('raw_file_id')
     target_id = request.data.get('target_id')
-    drop_type = request.data.get('drop_type')
     target_type = request.data.get('target_type')
+    drop_type = request.data.get('drop_type')
     selected_streams = request.data.get('selected_streams', [])
 
+    if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'NODE':
+        success = ensure_metadata_stub(target_id, target_type)
+        if not success:
+            return Response({"error": "Could not sync metadata from Hub"}, status=502)
     try:
         raw_file = RawMediaFile.objects.get(id=raw_file_id)
     except RawMediaFile.DoesNotExist:

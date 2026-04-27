@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
@@ -18,6 +20,7 @@ class Title(models.Model):
         MOVIE = 'MOVIE', 'Movie'
         SERIES = 'SERIES', 'Series'
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     type = models.CharField(max_length=10, choices=Type.choices, default=Type.MOVIE)
     name = models.CharField(max_length=255)
     original_name = models.CharField(max_length=255, blank=True)
@@ -34,23 +37,19 @@ class Title(models.Model):
     poster = models.ImageField(upload_to='posters/', null=True, blank=True)
     rating_score = models.FloatField(default=0.0, db_index=True)
     votes_count = models.IntegerField(default=0)
-
     created_at = models.DateTimeField(auto_now_add=True)
-    track_groups = GenericRelation('TrackGroup')
 
     def __str__(self):
         return self.name
 
 
 class Episode(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.ForeignKey(Title, on_delete=models.CASCADE, related_name='episodes')
     season_number = models.IntegerField(default=1)
     episode_number = models.IntegerField(default=1)
     name = models.CharField(max_length=255, blank=True)
     description = models.TextField(blank=True)
-
-    # Прямая связь для получения сборок дорожек (Для эпизодов)
-    track_groups = GenericRelation('TrackGroup')
 
     class Meta:
         ordering = ['season_number', 'episode_number']
@@ -79,7 +78,7 @@ class TrackGroup(models.Model):
     )
 
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    object_id = models.PositiveIntegerField()
+    object_id = models.CharField(max_length=36, db_index=True)
     content_object = GenericForeignKey('content_type', 'object_id')
 
     video_asset = models.ForeignKey(
@@ -91,7 +90,6 @@ class TrackGroup(models.Model):
 
     rating_score = models.FloatField(default=0.0)
     votes_count = models.IntegerField(default=0)
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
