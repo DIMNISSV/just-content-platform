@@ -184,10 +184,10 @@ def asset_sync_view(request):
         return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@api_view(['POST'])
+@api_view(['POST', 'DELETE'])
 @permission_classes([AllowAny])
 def track_group_sync_view(request):
-    # 1. Auth check (используем уже написанный check_provider_auth или inline)
+    # 1. Auth check
     auth_header = request.headers.get('Authorization')
     token = auth_header.split(' ')[1] if auth_header else ''
     provider = PluginProvider.objects.filter(api_token=token, is_active=True).first()
@@ -195,6 +195,16 @@ def track_group_sync_view(request):
     if not provider:
         return Response({"error": "Unauthorized"}, status=401)
 
+    # Логика удаления
+    if request.method == 'DELETE':
+        tg_id = request.query_params.get('tg_id')
+        if not tg_id:
+            return Response({"error": "tg_id is required"}, status=400)
+        # Удаляем только если эта группа принадлежит этому провайдеру!
+        count, _ = TrackGroup.objects.filter(id=tg_id, provider=provider).delete()
+        return Response({"status": "deleted", "count": count})
+
+    # Логика создания/обновления (POST)
     data = request.data
     try:
         with transaction.atomic():
