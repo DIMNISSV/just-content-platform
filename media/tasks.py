@@ -157,10 +157,9 @@ def extract_stream_task(variant_id):
     elif stream.codec_type == MediaStream.StreamType.AUDIO:
         out_file_name = f'audio.{container}'
         rel_path = f'assets/{asset.id}/{variant.id}/{out_file_name}'
-
         a_codec = preset.codec if preset and preset.codec else 'aac'
         a_bitrate = preset.bitrate if preset and preset.bitrate else '128k'
-        cmd.extend(['-c:a', a_codec, '-b:a', a_bitrate])
+        cmd.extend(['-c:a', a_codec, '-b:a', a_bitrate, '-movflags', '+faststart'])
 
     elif stream.codec_type == MediaStream.StreamType.SUBTITLE:
         out_file_name = 'sub.vtt'

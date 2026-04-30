@@ -409,20 +409,36 @@ const changePlaybackRate = (rate) => {
 };
 const performSync = () => {
   if (!videoRef.value || !audioRef.value || !activeAudio.value) return;
+
   const video = videoRef.value;
   const audio = audioRef.value;
   if (video.paused || video.waiting || video.seeking) {
     if (!audio.paused) audio.pause();
     return;
   }
+  if (audio.readyState < 2) {
+    if (!video.paused) {
+      console.log("SyncEngine: Audio is buffering, stalling video...");
+      video.pause();
+    }
+    return;
+  } else {
+    if (video.paused && isPlaying.value) {
+      video.play().catch(() => {
+      });
+    }
+  }
   const offsetSeconds = activeAudio.value.offset_ms / 1000;
   const targetAudioTime = video.currentTime - offsetSeconds;
-  if (Math.abs(audio.currentTime - targetAudioTime) > 0.2) {
+  const drift = Math.abs(audio.currentTime - targetAudioTime);
+  if (drift > 0.25) {
+    console.log(`SyncEngine: Drift detected (${drift.toFixed(3)}s). Correcting...`);
     audio.currentTime = targetAudioTime;
   }
-  if (audio.paused) audio.play().catch(e => console.warn(e));
+  if (audio.paused && !video.paused) {
+    audio.play().catch(e => console.warn("Audio play blocked by browser:", e));
+  }
 };
-
 const startSyncEngine = () => {
   stopSyncEngine();
   syncInterval = setInterval(performSync, 250);
@@ -635,7 +651,14 @@ const currentGroupAudios = computed(() => {
           allow="autoplay; encrypted-media"
       ></iframe>
 
-      <audio v-if="activeAudio" ref="audioRef" class="hidden" preload="auto"></audio>
+      <audio
+          v-if="activeAudio"
+          ref="audioRef"
+          class="hidden"
+          preload="auto"
+          @waiting="videoRef.pause()"
+          @playing="isPlaying && videoRef.play()"
+      ></audio>
     </div>
 
     <!-- UI Overlay (Controls) -->
