@@ -270,3 +270,22 @@ def push_asset_to_hub(asset_id):
     except requests.exceptions.RequestException as e:
         logger.error(f"Network error syncing Asset {asset_id} to HUB: {e}")
         return f"Sync network error"
+
+
+@shared_task
+def trigger_lifeboat(asset_id):
+    """Отправляет на HUB запрос на запуск миграции для ассета."""
+    hub_url = getattr(settings, 'HUB_URL', '').rstrip('/')
+    hub_token = getattr(settings, 'HUB_API_TOKEN', '')
+
+    if not hub_url: return
+
+    try:
+        resp = requests.post(
+            f"{hub_url}/api/v1/aggregator/sync/trigger-migration/{asset_id}/",
+            headers={"Authorization": f"Bearer {hub_token}"},
+            timeout=10
+        )
+        return resp.json()
+    except Exception as e:
+        logger.error(f"Failed to trigger lifeboat on HUB: {e}")

@@ -1,6 +1,6 @@
 import logging
 
-from django.db import transaction
+from django.db import transaction, models
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from content.models import Title, Episode, AdditionalTrack, TrackGroup
 from media.models import AssetVariant, Asset
 from .models import PluginProvider, ExternalContentRegistry
+from .utils import check_provider_auth
 
 logger = logging.getLogger(__name__)
 
@@ -227,3 +228,91 @@ def track_group_sync_view(request):
         return Response({"status": "synced"})
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
+
+@api_view(['GET'])
+def check_asset_lock_view(request, asset_id):
+    provider = check_provider_auth(request)
+    # Ищем группы, использующие этот ассет, автором которых НЕ является текущий провайдер
+    dependents = TrackGroup.objects.filter(
+        models.Q(video_asset_id=asset_id) | models.Q(additional_tracks__asset_id=asset_id)
+    ).exclude(provider=provider).select_related('provider')
+
+    if dependents.exists():
+        provider_emails = list(dependents.values_list('provider__api_token', flat=True))  # Или эмейлы для уведомлений
+        return Response({
+            "is_locked": True,
+            "dependent_providers": provider_emails
+        })
+
+    return Response({"is_locked": False})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def metadata_sync_view(request):
+    """Принимает новые Title/Episode от NODE и сохраняет их в глобальную базу HUB."""
+    provider = check_provider_auth(request)
+    if not provider:
+        return Response({"error": "Unauthorized"}, status=401)
+
+    payload = request.data
+    m_type = payload.get('type')
+    data = payload.get('data')
+
+    try:
+        with transaction.atomic():
+            if m_type == 'title':
+                obj, _ = Title.objects.update_or_create(
+                    id=data['id'],
+                    defaults={
+                        'name': data['name'],
+                        'original_name': data['original_name'],
+                        'description': data['description'],
+                        'release_year': data['release_year'],
+                        'type': data['type_choice']
+                    }
+                )
+            elif m_type == 'episode':
+                obj, _ = Episode.objects.update_or_create(
+                    id=data['id'],
+                    defaults={
+                        'title_id': data['title_id'],
+                        'season_number': data['season_number'],
+                        'episode_number': data['episode_number'],
+                        'name': data['name']
+                    }
+                )
+        return Response({"status": "success", "id": str(obj.id)})
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def trigger_migration_view(request, asset_id):
+    """
+    HUB получает сигнал от владельца ассета: 'Я хочу удалить файл'.
+    HUB находит всех, кто использует это видео, и отправляет им команду Lifeboat.
+    """
+    owner_provider = check_provider_auth(request)
+    if not owner_provider:
+        return Response({"error": "Unauthorized"}, status=401)
+
+    # Находим всех КРОМЕ владельца, кто использует этот ассет в своих сборках
+    dependents = TrackGroup.objects.filter(
+        models.Q(video_asset_id=asset_id) | models.Q(additional_tracks__asset_id=asset_id)
+    ).exclude(provider=owner_provider).select_related('provider').distinct()
+
+    if not dependents.exists():
+        return Response({"status": "no_dependents_found"})
+
+    # Для каждого зависимого провайдера инициируем команду скачивания (Lifeboat)
+    # В реальной системе здесь будет вызов Webhook-а на сторону NODE
+    for tg in dependents:
+        target_node_url = tg.provider.endpoint_url.rsplit('/', 2)[0]  # Базовый URL ноды
+        logger.warning(f"SENDING LIFEBOAT COMMAND TO {tg.provider.name} AT {target_node_url} FOR ASSET {asset_id}")
+        # Здесь должен быть requests.post(f"{target_node_url}/api/v1/media/lifeboat/download/", ...)
+        # Мы реализуем этот эндпоинт на стороне NODE в следующем шаге.
+
+    return Response({"status": "migration_started", "count": dependents.count()})

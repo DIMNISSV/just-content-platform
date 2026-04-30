@@ -3,11 +3,14 @@ import logging
 import requests
 from django.conf import settings
 from rest_framework import viewsets
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAdminUser, AllowAny
 from rest_framework.response import Response
 
 from aggregator.utils import check_provider_auth
+from media.tasks import trigger_lifeboat
 from .models import Asset, AssetVariant, RawMediaFile
 from .serializers import AssetSerializer, RawFileSerializer
 
@@ -89,3 +92,43 @@ class AssetViewSet(viewsets.ReadOnlyModelViewSet):
                 logger.error(f"Failed to fetch assets from Hub: {e}")
 
         return Response(local_assets)
+
+    def perform_destroy(self, instance):
+        if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'NODE':
+            hub_url = getattr(settings, 'HUB_URL', '').rstrip('/')
+            hub_token = getattr(settings, 'HUB_API_TOKEN', '')
+
+            # Спрашиваем Hub: есть ли зависимости?
+            resp = requests.get(
+                f"{hub_url}/api/v1/aggregator/sync/asset-check-lock/{instance.id}/",
+                headers={"Authorization": f"Bearer {hub_token}"}
+            )
+
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get('is_locked'):
+                    # Если заблокировано — инициируем Lifeboat и кидаем ошибку
+                    trigger_lifeboat.delay(str(instance.id), data.get('dependent_providers'))
+                    raise ValidationError(
+                        "Asset is used by other providers. Migration started. Please try deleting later.")
+
+        instance.delete()
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def lifeboat_download_view(request):
+    """
+    Эндпоинт на NODE. Вызывается HUB-ом.
+    Приказывает узлу скачать ассет с другого узла, чтобы сохранить его.
+    """
+    # Проверка секрета HUB (webhook_secret)
+    # ...
+
+    asset_id = request.data.get('asset_id')
+    source_url = request.data.get('source_url')  # Прямая ссылка на мастер-файл
+
+    # Запускаем фоновую задачу скачивания и перехвата владения
+    # download_and_rehost_asset.delay(asset_id, source_url)
+
+    return Response({"status": "accepted"})

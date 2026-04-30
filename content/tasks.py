@@ -2,7 +2,7 @@ import logging
 import requests
 from celery import shared_task
 from django.conf import settings
-from .models import TrackGroup, AdditionalTrack
+from .models import TrackGroup, AdditionalTrack, Title, Episode
 
 logger = logging.getLogger(__name__)
 
@@ -52,3 +52,42 @@ def push_track_group_to_hub(tg_id):
             logger.error(f"Push TG failed: {resp.status_code} - {resp.text}")
     except Exception as e:
         logger.error(f"Network error pushing TG: {e}")
+
+
+@shared_task
+def push_metadata_to_hub(model_type, object_id):
+    hub_url = getattr(settings, 'HUB_URL', '').rstrip('/')
+    hub_token = getattr(settings, 'HUB_API_TOKEN', '')
+
+    if model_type == 'title':
+        obj = Title.objects.get(id=object_id)
+        payload = {
+            "type": "title",
+            "data": {
+                "id": str(obj.id),
+                "name": obj.name,
+                "original_name": obj.original_name,
+                "description": obj.description,
+                "release_year": obj.release_year,
+                "type_choice": obj.type
+            }
+        }
+    else:
+        obj = Episode.objects.get(id=object_id)
+        payload = {
+            "type": "episode",
+            "data": {
+                "id": str(obj.id),
+                "title_id": str(obj.title_id),
+                "season_number": obj.season_number,
+                "episode_number": obj.episode_number,
+                "name": obj.name
+            }
+        }
+
+    requests.post(
+        f"{hub_url}/api/v1/aggregator/sync/metadata/",
+        json=payload,
+        headers={"Authorization": f"Bearer {hub_token}"},
+        timeout=10
+    )
