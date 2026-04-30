@@ -25,12 +25,13 @@ def push_track_group_to_hub(tg_id):
         "tg_id": str(tg.id),
         "name": tg.name,
         "author": tg.author,
-        "content_type": tg.content_type.model,  # 'title' or 'episode'
+        "content_type": tg.content_type.model,
         "object_id": str(tg.object_id),
         "video_asset_id": str(tg.video_asset_id),
         "tracks": [
             {
                 "asset_id": str(at.asset_id),
+                "asset_type": at.asset.type,
                 "language": at.language,
                 "author": at.author,
                 "offset_ms": at.offset_ms

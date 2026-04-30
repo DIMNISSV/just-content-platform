@@ -187,31 +187,30 @@ def asset_sync_view(request):
 @api_view(['POST', 'DELETE'])
 @permission_classes([AllowAny])
 def track_group_sync_view(request):
-    # 1. Auth check
-    auth_header = request.headers.get('Authorization')
-    token = auth_header.split(' ')[1] if auth_header else ''
-    provider = PluginProvider.objects.filter(api_token=token, is_active=True).first()
-
+    provider = check_provider_auth(request)
     if not provider:
         return Response({"error": "Unauthorized"}, status=401)
 
-    # Логика удаления
     if request.method == 'DELETE':
         tg_id = request.query_params.get('tg_id')
-        if not tg_id:
-            return Response({"error": "tg_id is required"}, status=400)
-        # Удаляем только если эта группа принадлежит этому провайдеру!
+        if not tg_id: return Response({"error": "tg_id is required"}, status=400)
         count, _ = TrackGroup.objects.filter(id=tg_id, provider=provider).delete()
         return Response({"status": "deleted", "count": count})
 
-    # Логика создания/обновления (POST)
     data = request.data
     try:
         with transaction.atomic():
             from django.contrib.contenttypes.models import ContentType
             ctype = ContentType.objects.get(app_label='content', model=data['content_type'])
 
-            # Создаем/обновляем группу
+            # 1. ГАРАНТИРУЕМ НАЛИЧИЕ ВИДЕО-АССЕТА (Stub)
+            # Если HUB еще не знает об этом ассете, создаем его виртуальную копию
+            video_asset, _ = Asset.objects.get_or_create(
+                id=data['video_asset_id'],
+                defaults={'type': Asset.Type.VIDEO, 'provider': provider}
+            )
+
+            # 2. Создаем/обновляем группу
             tg, _ = TrackGroup.objects.update_or_create(
                 id=data['tg_id'],
                 defaults={
@@ -220,23 +219,30 @@ def track_group_sync_view(request):
                     'provider': provider,
                     'content_type': ctype,
                     'object_id': data['object_id'],
-                    'video_asset_id': data['video_asset_id']
+                    'video_asset': video_asset
                 }
             )
 
-            # Обновляем треки
+            # 3. Обновляем дополнительные треки
             tg.additional_tracks.all().delete()
             for t_data in data['tracks']:
+                # Также гарантируем наличие аудио-ассета
+                audio_asset, _ = Asset.objects.get_or_create(
+                    id=t_data['asset_id'],
+                    defaults={'type': Asset.Type.AUDIO, 'provider': provider}
+                )
+
                 AdditionalTrack.objects.create(
                     track_group=tg,
-                    asset_id=t_data['asset_id'],
-                    language=t_data['language'],
-                    author=t_data['author'],
-                    offset_ms=t_data['offset_ms']
+                    asset=audio_asset,
+                    language=t_data.get('language', 'und'),
+                    author=t_data.get('author', ''),
+                    offset_ms=t_data.get('offset_ms', 0)
                 )
 
         return Response({"status": "synced"})
     except Exception as e:
+        logger.error(f"Sync TG Error on HUB: {str(e)}")
         return Response({"error": str(e)}, status=500)
 
 
