@@ -6,6 +6,7 @@ from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
+from django.db.models import Prefetch
 from django.shortcuts import render, get_object_or_404
 from django.views.generic import DetailView, TemplateView
 from rest_framework import viewsets, filters, status, mixins
@@ -626,23 +627,74 @@ def content_tree_api(request):
     if not provider and not request.user.is_staff:
         return Response({"error": "Unauthorized"}, status=401)
 
-    titles = Title.objects.prefetch_related('episodes', 'track_groups').all()
+    # 1. Получаем все тайтлы и эпизоды
+    titles = Title.objects.prefetch_related('episodes').all()
+    title_ctype = ContentType.objects.get_for_model(Title)
+    episode_ctype = ContentType.objects.get_for_model(Episode)
+
+    # 2. Получаем все TrackGroups, связанные с тайтлами и эпизодами, за один запрос
+    # Prefetch ассетов внутри AdditionalTrack для оптимизации
+    additional_tracks_prefetch = Prefetch(
+        'additional_tracks',
+        queryset=AdditionalTrack.objects.select_related('asset')
+    )
+
+    all_track_groups = TrackGroup.objects.prefetch_related(
+        additional_tracks_prefetch
+    ).select_related('provider').all()
+
+    # 3. Группируем их по контенту в словари для быстрого доступа
+    groups_by_title = {}
+    groups_by_episode = {}
+    for group in all_track_groups:
+        if group.content_type_id == title_ctype.id:
+            groups_by_title.setdefault(group.object_id, []).append(group)
+        elif group.content_type_id == episode_ctype.id:
+            groups_by_episode.setdefault(group.object_id, []).append(group)
+
+    # 4. Собираем финальное дерево
     tree = []
     for t in titles:
+        # Сериализация эпизодов
         episodes = []
         for ep in t.episodes.all():
+            ep_groups = groups_by_episode.get(str(ep.id), [])
             episodes.append({
                 'id': str(ep.id),
                 'name': str(ep),
                 'season': ep.season_number,
-                'number': ep.episode_number
+                'number': ep.episode_number,
+                'track_groups': [
+                    {
+                        'id': str(g.id), 'name': g.name, 'author': g.author,
+                        'assets': [
+                                      {'id': str(track.asset.id), 'type': track.asset.type,
+                                       'name': track.author or track.language, 'link_id': str(track.id)}
+                                      for track in g.additional_tracks.all()
+                                  ] + [{'id': str(g.video_asset_id), 'type': 'VIDEO', 'name': 'Video'}]
+                    } for g in ep_groups
+                ]
             })
+
+        # Сериализация тайтла (если фильм)
+        title_groups = groups_by_title.get(str(t.id), [])
         tree.append({
             'id': str(t.id),
             'name': t.name,
             'type': t.type,
-            'episodes': episodes
+            'episodes': episodes,
+            'track_groups': [
+                {
+                    'id': str(g.id), 'name': g.name, 'author': g.author,
+                    'assets': [
+                                  {'id': str(track.asset.id), 'type': track.asset.type,
+                                   'name': track.author or track.language, 'link_id': str(track.id)}
+                                  for track in g.additional_tracks.all()
+                              ] + [{'id': str(g.video_asset_id), 'type': 'VIDEO', 'name': 'Video'}]
+                } for g in title_groups
+            ]
         })
+
     return Response(tree)
 
 
