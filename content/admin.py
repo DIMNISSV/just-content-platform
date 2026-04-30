@@ -58,13 +58,12 @@ class TitleAdmin(admin.ModelAdmin):
         return format_html('<a class="button" href="{}/workbench/">Open Workbench</a>', obj.pk)
 
     workbench_link.short_description = 'Workbench'
-    workbench_link.allow_tags = True
 
     # Регистрируем кастомный URL внутри админки Title
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            path('<int:object_id>/workbench/', self.admin_site.admin_view(self.workbench_view),
+            path('<uuid:object_id>/workbench/', self.admin_site.admin_view(self.workbench_view),
                  name='content_title_workbench'),
         ]
         return custom_urls + urls
@@ -97,7 +96,7 @@ class EpisodeAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
-            path('<int:object_id>/workbench/', self.admin_site.admin_view(self.workbench_view),
+            path('<uuid:object_id>/workbench/', self.admin_site.admin_view(self.workbench_view),
                  name='content_episode_workbench'),
         ]
         return custom_urls + urls

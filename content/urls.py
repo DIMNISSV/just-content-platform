@@ -17,22 +17,22 @@ router.register(r'additional-tracks', AdditionalTrackViewSet, basename='addition
 
 urlpatterns = [
     path('api/v1/content/', include(router.urls)),
-    path('api/v1/player/manifest/<str:content_type_str>/<int:object_id>/', player_manifest, name='player-manifest'),
-    path('api/v1/player/manifest/external/<str:content_type_str>/<int:object_id>/', player_external_sources,
+    path('api/v1/player/manifest/<str:content_type_str>/<uuid:object_id>/', player_manifest, name='player-manifest'),
+    path('api/v1/player/manifest/external/<str:content_type_str>/<uuid:object_id>/', player_external_sources,
          name='player-external-sources'),
-    path('api/v1/content/sync/metadata/<str:model_type>/<str:uuid_str>/', metadata_sync_detail_api,
+    path('api/v1/content/sync/metadata/<str:model_type>/<uuid:uuid_str>/', metadata_sync_detail_api,
          name='metadata-sync-detail'),
-    path('api/v1/player/rate-track/<int:group_id>/', rate_track_group, name='rate-track'),
+    path('api/v1/player/rate-track/<uuid:group_id>/', rate_track_group, name='rate-track'),
 
     # Telemetry and History
     path('api/v1/player/telemetry/', player_telemetry, name='player-telemetry'),
     path('api/v1/content/history/', continue_watching, name='continue-watching'),
     path('api/v1/content/recommendations/', recommendations, name='recommendations'),
-    path('watch/episode/<int:pk>/', EpisodeWatchView.as_view(), name='watch-episode'),
-    path('api/v1/content/workbench/save/<str:content_type_str>/<int:object_id>/', save_workbench,
+    path('watch/episode/<uuid:pk>/', EpisodeWatchView.as_view(), name='watch-episode'),
+    path('api/v1/content/workbench/save/<str:content_type_str>/<uuid:object_id>/', save_workbench,
          name='save-workbench'),
     path('api/v1/content/tree/', content_tree_api, name='content-tree'),
     path('api/v1/content/assign-file/', assign_file_api, name='assign-file'),
-    path('watch/<int:pk>/', WatchView.as_view(), name='watch'),
+    path('watch/<uuid:pk>/', WatchView.as_view(), name='watch'),
     path('catalog/', CatalogView.as_view(), name='catalog'),
 ]
