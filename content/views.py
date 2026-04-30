@@ -823,13 +823,19 @@ def assign_file_api(request):
                     )
                     if p_created: new_variants_to_extract.append(p_var.id)
 
-            ctype = ContentType.objects.get_for_model(Title if target_type == 'title' else Episode)
+            if target_type == 'title':
+                ctype = ContentType.objects.get_for_model(Title)
+                content_object = get_object_or_404(Title, pk=target_id)
+            else:  # episode
+                ctype = ContentType.objects.get_for_model(Episode)
+                content_object = get_object_or_404(Episode, pk=target_id)
+
             group_author = request.data.get('group_author', '')
+
             track_group = TrackGroup.objects.create(
                 name=f"Version {(raw_file.original_name or 'New')[:30]}",
                 author=group_author,
-                content_type=ctype,
-                object_id=target_id,
+                content_object=content_object,
                 video_asset=video_asset
             )
         else:
