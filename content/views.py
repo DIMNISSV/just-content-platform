@@ -824,10 +824,8 @@ def assign_file_api(request):
                     if p_created: new_variants_to_extract.append(p_var.id)
 
             if target_type == 'title':
-                ctype = ContentType.objects.get_for_model(Title)
                 content_object = get_object_or_404(Title, pk=target_id)
             else:  # episode
-                ctype = ContentType.objects.get_for_model(Episode)
                 content_object = get_object_or_404(Episode, pk=target_id)
 
             group_author = request.data.get('group_author', '')
@@ -839,7 +837,8 @@ def assign_file_api(request):
                 video_asset=video_asset
             )
         else:
-            track_group = TrackGroup.objects.get(id=target_id)
+            # Если мы добавляем к существующей группе (target_id это UUID группы)
+            track_group = get_object_or_404(TrackGroup, pk=target_id)
 
         for s_info in selected_streams:
             if s_info.get('is_video'): continue
@@ -857,12 +856,12 @@ def assign_file_api(request):
             if not AdditionalTrack.objects.filter(track_group=track_group, asset=audio_asset).exists():
                 AdditionalTrack.objects.create(
                     track_group=track_group, asset=audio_asset,
-                    language=s_info.get('language', 'Unknown'),
+                    language=s_info.get('language', 'und'),
                     author=s_info.get('author', ''),
                     offset_ms=s_info.get('offset_ms', 0)
                 )
 
-        transaction.on_commit(lambda: [extract_stream_task.delay(vid) for vid in new_variants_to_extract])
+        transaction.on_commit(lambda: [extract_stream_task.delay(str(vid)) for vid in new_variants_to_extract])
 
     return Response({"status": "success", "reused_count": len(selected_streams) - len(new_variants_to_extract)})
 
