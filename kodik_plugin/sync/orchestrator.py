@@ -1,6 +1,8 @@
+import json
 import logging
 from kodik_plugin.adapters.base import BaseJCPAdapter
 from kodik_plugin.client.list_api import KodikListClient
+from kodik_plugin.client.dump_api import KodikDumpClient
 from kodik_plugin.mapper.episode_mapper import map_kodik_item_to_jcp_payloads
 from kodik_plugin.models import KodikSyncState
 
@@ -13,7 +15,7 @@ class KodikSyncOrchestrator:
     Fetches data from Kodik API -> Maps to JCP format -> Sends via Adapter.
     """
 
-    def __init__(self, client: KodikListClient, adapter: BaseJCPAdapter, plugin_id: int):
+    def __init__(self, client: KodikListClient | KodikDumpClient, adapter: BaseJCPAdapter, plugin_id: int):
         self.client = client
         self.adapter = adapter
         self.plugin_id = plugin_id
@@ -53,7 +55,6 @@ class KodikSyncOrchestrator:
                 pages_processed += 1
                 next_page_url = data.get('next_page')
 
-                # Save cursor state
                 state_obj.state_data['next_page_url'] = next_page_url
                 state_obj.save(update_fields=['state_data', 'updated_at'])
                 logger.debug(f"Saved state for key {state_key}. Next page: {next_page_url}")
@@ -69,6 +70,56 @@ class KodikSyncOrchestrator:
 
         logger.info(
             f"API Sync cycle completed. Success: {success_count}, Errors: {error_count}. Pages processed: {pages_processed}.")
+        return success_count, error_count
+
+    def run_sync_dump(self, dump_name: str, resume: bool = False, max_items: int = 0,
+                      state_key: str = 'dump_sync_default') -> tuple[int, int]:
+        logger.info(
+            f"Starting Dump synchronization from {dump_name}. Resume: {resume}, Max Items: {max_items}, State Key: {state_key}")
+
+        state_obj, _ = KodikSyncState.objects.get_or_create(key=state_key)
+        start_index = state_obj.state_data.get('last_index', 0) if resume else 0
+
+        if not hasattr(self.client, 'download_dump'):
+            raise ValueError(
+                "Provided client does not support dump downloads. Please supply a KodikDumpClient instance.")
+
+        file_path = self.client.download_dump(dump_name)
+
+        success_count, error_count, items_processed = 0, 0, 0
+
+        try:
+            logger.info("Loading dump JSON into memory...")
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            logger.info(f"Dump loaded. Total items in file: {len(data)}. Starting from index: {start_index}")
+
+            for i in range(start_index, len(data)):
+                if max_items and items_processed >= max_items:
+                    logger.info(f"Reached maximum items limit ({max_items}). Stopping.")
+                    break
+
+                item = data[i]
+                succ, err = self._process_item(item)
+                success_count += succ
+                error_count += err
+                items_processed += 1
+
+                # Periodically save state
+                if items_processed % 100 == 0:
+                    state_obj.state_data['last_index'] = i + 1
+                    state_obj.save(update_fields=['state_data', 'updated_at'])
+
+            # Final state save
+            state_obj.state_data['last_index'] = start_index + items_processed
+            state_obj.save(update_fields=['state_data', 'updated_at'])
+
+        except Exception as e:
+            logger.exception("Dump Sync process interrupted due to an unexpected error.")
+            raise e
+
+        logger.info(
+            f"Dump Sync cycle completed. Success: {success_count}, Errors: {error_count}. Total items processed this run: {items_processed}.")
         return success_count, error_count
 
     def _process_item(self, item: dict) -> tuple[int, int]:
