@@ -18,17 +18,22 @@ class HTTPWebhookAdapter(BaseJCPAdapter):
         self.secret_token = secret_token
         self.timeout = timeout
         self.session = requests.Session()
+        logger.debug(f"Initializing HTTPWebhookAdapter pointing to: {webhook_url}")
         if self.secret_token:
             self.session.headers.update({"Authorization": f"Bearer {self.secret_token}"})
+            logger.debug("Authorization Bearer header configured.")
 
     def send_payload(self, payload: dict) -> tuple[dict, int]:
+        logger.debug(f"Sending HTTP POST to {self.webhook_url}")
         try:
             response = self.session.post(self.webhook_url, json=payload, timeout=self.timeout)
+            logger.debug(f"HTTP Response received. Status: {response.status_code}")
             try:
                 data = response.json()
             except ValueError:
+                logger.warning("Received non-JSON response from JCP receiver.")
                 data = {"error": "Invalid JSON response from JCP"}
             return data, response.status_code
         except requests.RequestException as e:
-            logger.error(f"HTTPWebhookAdapter failed to send payload: {e}")
+            logger.error(f"HTTPWebhookAdapter failed to reach webhook server. Error: {e}")
             return {"error": str(e)}, 500

@@ -19,25 +19,37 @@ class KodikSyncOrchestrator:
         self.plugin_id = plugin_id
 
     def run_sync(self, **kwargs) -> tuple[int, int]:
-        """
-        Runs the synchronization loop.
-        Accepts Kodik API parameters (limit, sort, order, types, etc.).
-        Returns a tuple of (success_count, error_count).
-        """
-        logger.info(f"Starting Kodik sync with parameters: {kwargs}")
+        logger.info(f"Starting Kodik synchronization process. Parameters: {kwargs}")
         success_count = 0
         error_count = 0
 
-        for item in self.client.iter_list(**kwargs):
-            payloads = map_kodik_item_to_jcp_payloads(item, self.plugin_id)
-            for payload in payloads:
-                response, status = self.adapter.send_payload(payload)
-                if 200 <= status < 300:
-                    success_count += 1
-                else:
-                    logger.error(
-                        f"Failed to sync payload for Kodik ID {item.get('id')}. Status: {status}, Response: {response}")
-                    error_count += 1
+        try:
+            for item in self.client.iter_list(**kwargs):
+                item_id = item.get('id')
+                item_title = item.get('title')
+                logger.debug(f"Fetched Kodik item: {item_id} - '{item_title}'")
 
-        logger.info(f"Kodik sync complete. Successfully processed: {success_count}, Errors: {error_count}")
+                payloads = map_kodik_item_to_jcp_payloads(item, self.plugin_id)
+                logger.debug(f"Mapped item {item_id} into {len(payloads)} JCP payloads.")
+
+                for payload in payloads:
+                    logger.debug(f"Sending payload to adapter for item ID {item_id}.")
+                    response, status = self.adapter.send_payload(payload)
+
+                    if 200 <= status < 300:
+                        success_count += 1
+                    else:
+                        logger.error(
+                            f"Adapter rejected payload for Kodik ID {item_id}. "
+                            f"HTTP Status: {status}, Response Details: {response}"
+                        )
+                        error_count += 1
+        except Exception as e:
+            logger.exception("Sync process interrupted due to an unexpected error during iteration.")
+            raise e
+
+        logger.info(
+            f"Kodik synchronization cycle completed. "
+            f"Processed successfully: {success_count} payloads. Errors: {error_count} payloads."
+        )
         return success_count, error_count

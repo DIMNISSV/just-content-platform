@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "just-content-platform"
-version = "0.4.3-beta"
+version = "0.4.4"
 description = ""
 authors = ["Dmitriy <dimnissv@yandex.kz>"]
 readme = "README.md"

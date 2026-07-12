@@ -20,10 +20,11 @@ def sync_kodik_updates_task(limit: int = 100):
     plugin_id = getattr(settings, 'KODIK_PLUGIN_ID', 1)
 
     if not token:
-        logger.error("KODIK_API_TOKEN is not configured in Django settings.")
+        logger.error("KODIK_API_TOKEN is not configured in Django settings. Aborting sync task.")
         return "Failed: Missing KODIK_API_TOKEN"
 
     try:
+        logger.info("Initializing Kodik API client and local service adapter.")
         client = KodikListClient(token=token)
         adapter = LocalServiceAdapter(plugin_id=plugin_id)
         orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
@@ -31,7 +32,8 @@ def sync_kodik_updates_task(limit: int = 100):
         logger.info(f"Starting background Kodik sync for the latest {limit} items.")
         success, error = orchestrator.run_sync(limit=limit, sort='updated_at', order='desc')
 
+        logger.info(f"Finished background Kodik sync. Successful payloads: {success}, Failures: {error}")
         return f"Sync complete. Success: {success}, Errors: {error}"
     except Exception as e:
-        logger.exception("Error occurred during background Kodik sync.")
+        logger.exception("Fatal error occurred during background Kodik sync execution.")
         return f"Failed: {str(e)}"

@@ -121,3 +121,92 @@ CELERY_BEAT_SCHEDULE = {
         'kwargs': {'limit': 100},
     },
 }
+
+LOG_DIR = BASE_DIR / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'app_file_handler': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOG_DIR / 'app.log',
+            'maxBytes': 1024 * 1024 * 10,
+            'backupCount': 5,
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
+        },
+        'kodik_file_handler': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOG_DIR / 'kodik_plugin.log',
+            'maxBytes': 1024 * 1024 * 10,
+            'backupCount': 5,
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
+        },
+        'error_file_handler': {
+            'level': 'WARNING',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOG_DIR / 'errors.log',
+            'maxBytes': 1024 * 1024 * 10,
+            'backupCount': 5,
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'app_file_handler'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'core': {
+            'handlers': ['console', 'app_file_handler'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'content': {
+            'handlers': ['console', 'app_file_handler'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'media': {
+            'handlers': ['console', 'app_file_handler'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'users': {
+            'handlers': ['console', 'app_file_handler'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'aggregator': {
+            'handlers': ['console', 'app_file_handler'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'kodik_plugin': {
+            'handlers': ['console', 'kodik_file_handler', 'error_file_handler'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}
