@@ -1,5 +1,7 @@
 import logging
 
+from django.db import transaction
+
 from .base import BaseJCPAdapter
 
 logger = logging.getLogger(__name__)
@@ -27,13 +29,16 @@ class LocalServiceAdapter(BaseJCPAdapter):
         from aggregator.services import process_plugin_payload
 
         payload['plugin_id'] = self.plugin_id
-        logger.debug(
-            f"Processing local service payload. Title metadata: {payload.get('title_metadata', {}).get('name')}")
+        title_name = payload.get('title_metadata', {}).get('name')
+        logger.debug(f"Processing local service payload for: {title_name}")
 
         try:
-            response, status = process_plugin_payload(self.plugin, payload)
+            with transaction.atomic():
+                response, status = process_plugin_payload(self.plugin, payload)
+
             logger.debug(f"Local payload processing complete. Status: {status}")
             return response, status
         except Exception as e:
-            logger.exception("An exception occurred in process_plugin_payload inside LocalServiceAdapter.")
+            logger.exception(
+                f"Transaction rolled back due to an exception during local payload processing for: {title_name}")
             return {"error": str(e)}, 500

@@ -9,6 +9,7 @@ class KodikListClient(KodikBaseClient):
     Provides lazy fetching using pagination.
     """
     BASE_URL = "https://kodik-api.com/list"
+    SEARCH_URL = "https://kodik-api.com/search"
 
     def iter_list(self, limit: int = 50, sort: str = 'updated_at', order: str = 'desc', types: str = None, **kwargs) -> \
             Generator[dict, None, None]:
@@ -43,3 +44,20 @@ class KodikListClient(KodikBaseClient):
 
             url = next_url
             params = {}
+
+    def get_page(self, next_page_url: str = None, use_search: bool = False, **kwargs) -> dict:
+        """
+        Fetches a single page of results.
+        If next_page_url is provided, it ignores kwargs and fetches that exact URL.
+        """
+        if next_page_url:
+            return self._request('GET', next_page_url)
+
+        params = {
+            'with_episodes_data': 'true',
+            'with_material_data': 'true'
+        }
+        params.update(kwargs)
+
+        url = self.SEARCH_URL if use_search else self.BASE_URL
+        return self._request('GET', url, params=params)

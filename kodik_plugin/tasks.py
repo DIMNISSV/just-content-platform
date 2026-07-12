@@ -1,8 +1,6 @@
 import logging
-
 from celery import shared_task
 from django.conf import settings
-
 from kodik_plugin.adapters.local_adapter import LocalServiceAdapter
 from kodik_plugin.client.list_api import KodikListClient
 from kodik_plugin.sync.orchestrator import KodikSyncOrchestrator
@@ -24,15 +22,21 @@ def sync_kodik_updates_task(limit: int = 100):
         return "Failed: Missing KODIK_API_TOKEN"
 
     try:
-        logger.info("Initializing Kodik API client and local service adapter.")
         client = KodikListClient(token=token)
         adapter = LocalServiceAdapter(plugin_id=plugin_id)
         orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
 
         logger.info(f"Starting background Kodik sync for the latest {limit} items.")
-        success, error = orchestrator.run_sync(limit=limit, sort='updated_at', order='desc')
 
-        logger.info(f"Finished background Kodik sync. Successful payloads: {success}, Failures: {error}")
+        # We explicitly do not resume state for the hourly update task.
+        # It scans the most recent items strictly sorted by updated_at desc.
+        success, error = orchestrator.run_sync_api(
+            resume=False,
+            max_items=limit,
+            sort='updated_at',
+            order='desc'
+        )
+
         return f"Sync complete. Success: {success}, Errors: {error}"
     except Exception as e:
         logger.exception("Fatal error occurred during background Kodik sync execution.")
