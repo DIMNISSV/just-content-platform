@@ -7,7 +7,6 @@ class PluginProvider(models.Model):
     api_token = models.CharField(max_length=255, blank=True, help_text="Токен авторизации (если нужен)")
     is_active = models.BooleanField(default=True, help_text="Включен ли опрос этого плагина")
     timeout = models.IntegerField(default=3, help_text="Таймаут ожидания ответа в секундах")
-
     allowed_domains = models.JSONField(
         blank=True,
         default=list,
@@ -17,10 +16,6 @@ class PluginProvider(models.Model):
         max_length=255,
         blank=True,
         help_text="Секрет для подтверждения WebHook-ов от плагина"
-    )
-    can_restore_assets = models.BooleanField(
-        default=False,
-        help_text="Может ли плагин заменять удаленные локальные видео-ассеты (Lifeboat)?"
     )
 
     def __str__(self):
@@ -38,15 +33,10 @@ class ExternalContentRegistry(models.Model):
     title = models.ForeignKey('content.Title', on_delete=models.CASCADE, related_name='external_content')
     episode = models.ForeignKey('content.Episode', on_delete=models.CASCADE, null=True, blank=True,
                                 related_name='external_content')
-
     external_id = models.CharField(max_length=100, help_text="ID контента на стороне плагина")
     content_type = models.CharField(max_length=20, choices=ContentTypeChoices.choices)
-
-    # Привязка к физическому ассету для точной синхронизации (UUID видео)
     target_asset_uuid = models.UUIDField(null=True, blank=True, help_text="UUID локального видео-ассета")
-
     fetch_url = models.URLField(max_length=500, help_text="URL для запроса манифеста или iframe")
-
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -26,3 +26,4 @@ node_modules/
 staticfiles/
 
 celerybeat-schedule.*
+.code
