@@ -8,7 +8,7 @@ class KodikListClient(KodikBaseClient):
     Client for interacting with the /list Kodik API endpoint.
     Provides lazy fetching using pagination.
     """
-    BASE_URL = "https://kodikapi.com/list"
+    BASE_URL = "https://kodik-api.com/list"
 
     def iter_list(self, limit: int = 50, sort: str = 'updated_at', order: str = 'desc', types: str = None, **kwargs) -> \
             Generator[dict, None, None]:
