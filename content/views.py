@@ -443,11 +443,6 @@ class EpisodeWatchView(DetailView):
         return context
 
 
-@api_view(['GET'])
-def player_external_sources(request, content_type_str, object_id):
-    return Response({"sources": []})
-
-
 class GenreViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Genre.objects.all().order_by('name')
     serializer_class = GenreSerializer
@@ -468,7 +463,7 @@ def content_tree_api(request):
     from django.db.models import Prefetch
     all_track_groups = TrackGroup.objects.prefetch_related(
         Prefetch('additional_tracks', queryset=AdditionalTrack.objects.select_related('asset'))
-    ).select_related('provider').all()
+    ).all()
     groups_by_title = {}
     groups_by_episode = {}
     for g in all_track_groups:
@@ -494,7 +489,6 @@ def content_tree_api(request):
                         'id': str(g.id),
                         'name': g.name,
                         'author': g.author,
-                        'provider_name': g.provider.name if g.provider else 'Local',
                         'assets': [
                                       {
                                           'id': str(track.asset.id),
@@ -517,7 +511,6 @@ def content_tree_api(request):
                     'id': str(g.id),
                     'name': g.name,
                     'author': g.author,
-                    'provider_name': g.provider.name if g.provider else 'Local',
                     'assets': [
                                   {
                                       'id': str(track.asset.id),

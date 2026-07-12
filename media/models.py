@@ -1,7 +1,5 @@
 import uuid
 
-from django.contrib.contenttypes.fields import GenericForeignKey
-from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
 
@@ -36,8 +34,6 @@ class MediaStream(models.Model):
     codec_type = models.CharField(max_length=20, choices=StreamType.choices)
     codec_name = models.CharField(max_length=50, blank=True)
     language = models.CharField(max_length=10, blank=True, null=True)
-
-    # Extra info like bitrate, resolution for video, or channel layout for audio
     extra_info = models.JSONField(blank=True, default=dict)
 
     class Meta:
@@ -56,17 +52,13 @@ class TranscodingPreset(models.Model):
 
     name = models.CharField(max_length=100, unique=True, help_text="Напр: 4K AV1 5M")
     type = models.CharField(max_length=10, choices=Type.choices)
-
-    # FFmpeg settings
     codec = models.CharField(max_length=50, help_text="libx264, libaom-av1, libopus, aac...")
     video_preset = models.CharField(max_length=50, blank=True,
                                     help_text="veryfast, fast, medium... (оставьте пустым для AV1)")
     container = models.CharField(max_length=20, default='m3u8', help_text="m3u8, mp4, m4a, webm, ogg...")
-
     bitrate = models.CharField(max_length=20, help_text="5M, 2M, 128k...")
     width = models.IntegerField(null=True, blank=True, help_text="Для видео (напр. 3840)")
     is_default = models.BooleanField(default=False, help_text="Применять ли этот пресет автоматически в Визарде")
-
     custom_pre_args = models.TextField(blank=True, help_text="Аргументы ДО -i (input)")
     custom_post_args = models.TextField(blank=True, help_text="Аргументы ПОСЛЕ кодеков")
 
@@ -75,25 +67,12 @@ class TranscodingPreset(models.Model):
 
 
 class Asset(models.Model):
-    """
-    Логический контейнер. Олицетворяет, например, "Оригинальную русскую озвучку",
-    независимо от того, в скольких качествах (вариантах) она закодирована.
-    """
-
     class Type(models.TextChoices):
         VIDEO = 'VIDEO', 'Video'
         AUDIO = 'AUDIO', 'Audio'
         SUBTITLE = 'SUBTITLE', 'Subtitle'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    provider = models.ForeignKey(
-        'aggregator.PluginProvider',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='assets',
-        help_text="Provider owning this asset. Null means local (Node) asset."
-    )
     source_stream = models.ForeignKey(MediaStream, on_delete=models.SET_NULL, null=True, blank=True,
                                       related_name='extracted_assets')
     type = models.CharField(max_length=20, choices=Type.choices)
@@ -105,11 +84,6 @@ class Asset(models.Model):
 
 
 class AssetVariant(models.Model):
-    """
-    Физический файл (или HLS-плейлист) на диске.
-    Представляет конкретное качество (1080p, 720p, 128k audio) логического ассета.
-    """
-
     class Status(models.TextChoices):
         PROCESSING = 'PROCESSING', 'Processing'
         READY = 'READY', 'Ready'
@@ -128,23 +102,7 @@ class AssetVariant(models.Model):
 
     def get_absolute_url(self):
         from django.conf import settings
-        from urllib.parse import urlparse, urlunparse
-
         path = self.storage_path.lstrip('/')
-
-        # If the asset belongs to a provider, construct the remote URL
-        if self.asset.provider and self.asset.provider.endpoint_url:
-            parsed = urlparse(self.asset.provider.endpoint_url)
-            # Extract just the origin (scheme + domain)
-            base_url = urlunparse((parsed.scheme, parsed.netloc, '', '', '', ''))
-
-            # Note: We assume the remote node uses standard settings.MEDIA_URL prefix
-            # Alternatively, remote nodes should supply the full path in storage_path
-            if path.startswith('http://') or path.startswith('https://'):
-                return path
-            return f"{base_url}/{settings.MEDIA_URL.lstrip('/')}{path}"
-
-        # Local asset
         return f"/{settings.MEDIA_URL.lstrip('/')}{path}"
 
     def __str__(self):

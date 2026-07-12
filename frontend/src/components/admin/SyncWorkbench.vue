@@ -100,11 +100,8 @@ onMounted(() => {
           <label class="block text-sm font-bold text-gray-400 mb-1">Base Video Asset</label>
           <select v-model="selectedVideoId" class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white">
             <option disabled value="">-- Select Video --</option>
-            <!-- В цикле v-for для видео-ассетов -->
             <option v-for="v in videoAssets" :key="v.id" :value="v.id">
-              {{ v.original_name }}
-              <template v-if="v.is_remote"> [REMOTE: {{ v.provider_name || 'Other Node' }}]</template>
-              ({{ v.variants.length }} qualities)
+              {{ v.original_name }} ({{ v.variants.length }} qualities)
             </option>
           </select>
         </div>

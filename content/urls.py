@@ -4,7 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     TitleViewSet, player_manifest, rate_track_group,
     player_telemetry, continue_watching, recommendations, WatchView, save_workbench, EpisodeWatchView,
-    player_external_sources, GenreViewSet, CatalogView, content_tree_api, assign_file_api, EpisodeViewSet,
+    GenreViewSet, CatalogView, content_tree_api, assign_file_api, EpisodeViewSet,
     TrackGroupViewSet, AdditionalTrackViewSet
 )
 
@@ -17,8 +17,6 @@ router.register(r'additional-tracks', AdditionalTrackViewSet, basename='addition
 urlpatterns = [
     path('api/v1/content/', include(router.urls)),
     path('api/v1/player/manifest/<str:content_type_str>/<uuid:object_id>/', player_manifest, name='player-manifest'),
-    path('api/v1/player/manifest/external/<str:content_type_str>/<uuid:object_id>/', player_external_sources,
-         name='player-external-sources'),
     path('api/v1/player/rate-track/<uuid:group_id>/', rate_track_group, name='rate-track'),
     path('api/v1/player/telemetry/', player_telemetry, name='player-telemetry'),
     path('api/v1/content/history/', continue_watching, name='continue-watching'),

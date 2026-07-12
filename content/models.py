@@ -1,7 +1,7 @@
 import uuid
 
 from django.conf import settings
-from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
@@ -60,23 +60,11 @@ class Episode(models.Model):
 
 
 class TrackGroup(models.Model):
-    """
-    Аналог SyncGroup. Объединяет базовое ВИДЕО (Asset) и привязывает его к контенту.
-    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, default='Default Version',
                             help_text="Например: Театральная версия, Director's Cut")
     author = models.CharField(max_length=100, blank=True,
                               help_text="Релиз-группа или автор видео-сборки (напр. YIFY, HQCLUB)")
-
-    provider = models.ForeignKey(
-        'aggregator.PluginProvider',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='track_groups',
-        help_text="Provider that created this track group. Null means local Hub/Node."
-    )
 
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.CharField(max_length=36, db_index=True)
@@ -98,10 +86,6 @@ class TrackGroup(models.Model):
 
 
 class AdditionalTrack(models.Model):
-    """
-    Связывает Аудио или Субтитры (Asset) с конкретной сборкой (TrackGroup).
-    Здесь задается offset_ms для синхронизации в плеере.
-    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     track_group = models.ForeignKey(TrackGroup, on_delete=models.CASCADE, related_name='additional_tracks')
     asset = models.ForeignKey(
@@ -109,7 +93,8 @@ class AdditionalTrack(models.Model):
         on_delete=models.RESTRICT,
     )
     language = models.CharField(max_length=50, default='Unknown', help_text="Например: rus, eng, jpn")
-    author = models.CharField(max_length=100, blank=True, help_text="Студия озвучки или переводчик (напр. LostFilm, HDrezka)")
+    author = models.CharField(max_length=100, blank=True,
+                              help_text="Студия озвучки или переводчик (напр. LostFilm, HDrezka)")
     offset_ms = models.IntegerField(default=0, help_text="Сдвиг для синхронизации в миллисекундах")
 
     def __str__(self):
@@ -124,7 +109,7 @@ class TitleRating(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('user', 'title')  # Один юзер - одна оценка на фильм
+        unique_together = ('user', 'title')
 
     def __str__(self):
         return f"{self.user} rated {self.title} - {self.score}"
@@ -147,23 +132,18 @@ class TrackGroupRating(models.Model):
 class WatchHistory(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='watch_history')
     title = models.ForeignKey(Title, on_delete=models.CASCADE, related_name='watch_history')
-
-    # Optional: If watching a series, we store the specific episode
     episode = models.ForeignKey(Episode, on_delete=models.CASCADE, null=True, blank=True)
-
-    # Optional: Remember user's preferred voiceover/track group
     track_group = models.ForeignKey(TrackGroup, on_delete=models.SET_NULL, null=True, blank=True)
     last_audio_asset_id = models.UUIDField(null=True, blank=True, help_text="ID конкретного Asset аудио")
-    last_audio_track_name = models.CharField(max_length=255, blank=True, null=True, help_text="Точная строка названия дорожки")
+    last_audio_track_name = models.CharField(max_length=255, blank=True, null=True,
+                                             help_text="Точная строка названия дорожки")
     last_quality_label = models.CharField(max_length=50, blank=True, null=True, help_text="Напр: 1080p")
-
     progress_ms = models.PositiveIntegerField(default=0, help_text="Current playback position in milliseconds")
     is_completed = models.BooleanField(default=False, help_text="True if watched till the end credits")
-
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('user', 'title')  # We keep only the latest progress per Title
+        unique_together = ('user', 'title')
         ordering = ['-updated_at']
 
     def __str__(self):
