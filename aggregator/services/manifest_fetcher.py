@@ -23,17 +23,15 @@ def fetch_single_manifest(entry):
         headers["Authorization"] = f"Bearer {entry.plugin.api_token}"
 
     try:
-        # Поскольку плагин сам прислал нам fetch_url (например GET), делаем простой GET запрос
         resp = requests.get(entry.fetch_url, headers=headers, timeout=entry.plugin.timeout)
         if resp.status_code == 200:
             data = resp.json()
             sources = data.get('sources', [])
 
-            # Инжектим имя провайдера в дорожки
             for s in sources:
                 s['provider'] = entry.plugin.name
 
-            cache.set(cache_key, sources, timeout=60 * 15)  # Кеш на 15 минут
+            cache.set(cache_key, sources, timeout=60 * 15)
             return sources
         else:
             logger.warning(f"Plugin {entry.plugin.name} returned status {resp.status_code} on {entry.fetch_url}")
