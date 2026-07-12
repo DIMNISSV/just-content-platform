@@ -35,6 +35,8 @@ class Title(models.Model):
     mdl_id = models.CharField(max_length=100, blank=True)
     wa_id = models.CharField(max_length=100, blank=True)
     poster = models.ImageField(upload_to='posters/', null=True, blank=True)
+    poster_url = models.URLField(max_length=512, blank=True, null=True,
+                                 help_text="Предыдущий успешно загруженный URL постера")
     rating_score = models.FloatField(default=0.0, db_index=True)
     votes_count = models.IntegerField(default=0)
     metadata_priority_level = models.IntegerField(default=0, help_text="Приоритет последнего обновившего источника")

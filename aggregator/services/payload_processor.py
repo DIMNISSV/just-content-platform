@@ -1,5 +1,6 @@
 import logging
 
+from django.core.cache import cache
 from django.db.models import Q
 from django.utils.text import slugify
 
@@ -64,7 +65,10 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
 
         poster_url = title_meta.get('poster_url')
         if poster_url:
-            download_and_save_poster.delay(title.id, poster_url)
+            cache_key = f"poster_download_queued_{title.id}"
+            if cache.get(cache_key) != poster_url:
+                cache.set(cache_key, poster_url, timeout=300)
+                download_and_save_poster.delay(title.id, poster_url)
     else:
         if plugin.allow_title_update and title_meta:
             updated = False
@@ -111,8 +115,11 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
 
             poster_url = title_meta.get('poster_url')
             if poster_url:
-                if not title.poster or prio >= curr_prio:
-                    download_and_save_poster.delay(title.id, poster_url)
+                if not title.poster or title.poster_url != poster_url:
+                    cache_key = f"poster_download_queued_{title.id}"
+                    if cache.get(cache_key) != poster_url:
+                        cache.set(cache_key, poster_url, timeout=300)
+                        download_and_save_poster.delay(title.id, poster_url)
 
     episodes_meta = data.get('episodes_metadata', [])
     if title.type == Title.Type.SERIES and episodes_meta:
