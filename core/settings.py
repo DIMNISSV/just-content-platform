@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
+
 import environ
+from celery.schedules import crontab
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(
     DEBUG=(bool, True),
@@ -97,6 +100,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CELERY_BROKER_URL = env('CELERY_BROKER_URL')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
+KODIK_API_TOKEN = env('KODIK_API_TOKEN', default='')
+KODIK_PLUGIN_ID = env.int('KODIK_PLUGIN_ID', default=1)
+KODIK_WEBHOOK_SECRET = env('KODIK_WEBHOOK_SECRET', default='')
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
     'PAGE_SIZE': 20,
@@ -104,10 +110,14 @@ REST_FRAMEWORK = {
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'home'
 LOGOUT_REDIRECT_URL = 'home'
-from celery.schedules import crontab
 CELERY_BEAT_SCHEDULE = {
     'verify-plugins-daily': {
         'task': 'aggregator.tasks.verify_plugin_registry',
         'schedule': crontab(hour=3, minute=0),
+    },
+    'sync-kodik-updates-hourly': {
+        'task': 'kodik_plugin.tasks.sync_kodik_updates_task',
+        'schedule': crontab(minute=0),
+        'kwargs': {'limit': 100},
     },
 }
