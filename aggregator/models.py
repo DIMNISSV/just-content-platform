@@ -17,6 +17,18 @@ class PluginProvider(models.Model):
         blank=True,
         help_text="Секрет для подтверждения WebHook-ов от плагина"
     )
+    allow_title_creation = models.BooleanField(
+        default=False,
+        help_text="Разрешает плагину создавать новые тайтлы и эпизоды"
+    )
+    allow_title_update = models.BooleanField(
+        default=False,
+        help_text="Разрешает плагину обновлять метаданные существующих тайтлов"
+    )
+    metadata_priority = models.IntegerField(
+        default=0,
+        help_text="Приоритет метаданных плагина. Чем выше, тем авторитетнее источник"
+    )
 
     def __str__(self):
         status = "✅" if self.is_active else "❌"

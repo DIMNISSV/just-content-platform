@@ -37,6 +37,7 @@ class Title(models.Model):
     poster = models.ImageField(upload_to='posters/', null=True, blank=True)
     rating_score = models.FloatField(default=0.0, db_index=True)
     votes_count = models.IntegerField(default=0)
+    metadata_priority_level = models.IntegerField(default=0, help_text="Приоритет последнего обновившего источника")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -50,6 +51,7 @@ class Episode(models.Model):
     episode_number = models.IntegerField(default=1)
     name = models.CharField(max_length=255, blank=True)
     description = models.TextField(blank=True)
+    metadata_priority_level = models.IntegerField(default=0, help_text="Приоритет последнего обновившего источника")
 
     class Meta:
         ordering = ['season_number', 'episode_number']

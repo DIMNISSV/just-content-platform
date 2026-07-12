@@ -1,9 +1,7 @@
 from django.db.models import Avg, Count
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
-
-from .models import TitleRating, TrackGroupRating
-
+from .models import TitleRating, TrackGroupRating, Title, Episode
 
 @receiver([post_save, post_delete], sender=TitleRating)
 def update_title_rating(sender, instance, **kwargs):
@@ -13,7 +11,6 @@ def update_title_rating(sender, instance, **kwargs):
     title.votes_count = stats['count'] or 0
     title.save(update_fields=['rating_score', 'votes_count'])
 
-
 @receiver([post_save, post_delete], sender=TrackGroupRating)
 def update_track_group_rating(sender, instance, **kwargs):
     track_group = instance.track_group
@@ -21,3 +18,29 @@ def update_track_group_rating(sender, instance, **kwargs):
     track_group.rating_score = stats['avg_score'] or 0.0
     track_group.votes_count = stats['count'] or 0
     track_group.save(update_fields=['rating_score', 'votes_count'])
+
+@receiver(pre_save, sender=Title)
+def set_title_manual_priority(sender, instance, **kwargs):
+    if getattr(instance, '_is_webhook_update', False):
+        return
+    if instance.pk:
+        try:
+            old_instance = sender.objects.get(pk=instance.pk)
+            if old_instance.metadata_priority_level != instance.metadata_priority_level:
+                return
+        except sender.DoesNotExist:
+            pass
+    instance.metadata_priority_level = 9999
+
+@receiver(pre_save, sender=Episode)
+def set_episode_manual_priority(sender, instance, **kwargs):
+    if getattr(instance, '_is_webhook_update', False):
+        return
+    if instance.pk:
+        try:
+            old_instance = sender.objects.get(pk=instance.pk)
+            if old_instance.metadata_priority_level != instance.metadata_priority_level:
+                return
+        except sender.DoesNotExist:
+            pass
+    instance.metadata_priority_level = 9999
