@@ -1,8 +1,6 @@
 import json
 import logging
 
-import requests
-from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
@@ -13,7 +11,6 @@ from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
 from rest_framework.response import Response
 
-from aggregator.utils import check_provider_auth
 from media.models import Asset, RawMediaFile, AssetVariant, TranscodingPreset
 from media.tasks import extract_stream_task
 from users.models import UserPreference
@@ -26,10 +23,6 @@ logger = logging.getLogger(__name__)
 
 
 class TitleViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    API для каталога (Grid) и деталей (Watch).
-    ReadOnly, так как созданием мы пока управляем через Django Admin.
-    """
     queryset = Title.objects.prefetch_related('genres').all().order_by('-created_at')
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'original_name']
@@ -38,10 +31,7 @@ class TitleViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         from django.db.models import Exists, OuterRef
-        from .models import Favorite
-
         qs = super().get_queryset()
-
         user = self.request.user
         if user.is_authenticated:
             favorite_subquery = Favorite.objects.filter(user=user, title=OuterRef('pk'))
@@ -49,44 +39,32 @@ class TitleViewSet(viewsets.ReadOnlyModelViewSet):
         else:
             from django.db.models import Value
             qs = qs.annotate(is_favorite_annotation=Value(False))
-
-        # Ручная фильтрация
         c_type = self.request.query_params.get('type')
         genre = self.request.query_params.get('genre')
-
         if c_type in [Title.Type.MOVIE, Title.Type.SERIES]:
             qs = qs.filter(type=c_type)
         if genre:
             qs = qs.filter(genres__slug=genre)
-
         return qs
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated], url_path='toggle-favorite')
     def toggle_favorite(self, request, pk=None):
-        from .models import Favorite
         title = self.get_object()
-
         fav, created = Favorite.objects.get_or_create(user=request.user, title=title)
         if not created:
             fav.delete()
             return Response({"status": "removed", "is_favorite": False})
-
         return Response({"status": "added", "is_favorite": True})
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def favorites(self, request):
         from django.db.models import Value, BooleanField
-
-        # Получаем тайтлы, отсортированные по дате добавления в избранное
         fav_titles = Title.objects.filter(favorited_by__user=request.user).order_by('-favorited_by__created_at')
-        # Аннотируем поле is_favorite_annotation, чтобы сериализатор отработал без доп. запросов
         fav_titles = fav_titles.annotate(is_favorite_annotation=Value(True, output_field=BooleanField()))
-
         page = self.paginate_queryset(fav_titles)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
-
         serializer = self.get_serializer(fav_titles, many=True)
         return Response(serializer.data)
 
@@ -97,46 +75,36 @@ class TitleViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def rate(self, request, pk=None):
-        """Оценка фильма пользователем. POST: {"score": 8}"""
         title = self.get_object()
         score = request.data.get('score')
-
         if not score or not isinstance(score, int) or not (1 <= score <= 10):
             return Response({"error": "Score must be an integer between 1 and 10"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # update_or_create автоматически обновит оценку, если она уже была
         TitleRating.objects.update_or_create(
             user=request.user,
             title=title,
             defaults={'score': score}
         )
-        # Сигнал сам пересчитает rating_score и votes_count у Title
         title.refresh_from_db()
         return Response({"status": "rated", "new_score": title.rating_score, "votes": title.votes_count})
 
 
 @api_view(['POST'])
 def rate_track_group(request, group_id):
-    """Оценка конкретной озвучки/дорожки."""
     if not request.user.is_authenticated:
         return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
-
     score = request.data.get('score')
     if not score or not isinstance(score, int) or not (1 <= score <= 10):
         return Response({"error": "Invalid score"}, status=status.HTTP_400_BAD_REQUEST)
-
     try:
         track_group = TrackGroup.objects.get(id=group_id)
     except TrackGroup.DoesNotExist:
         return Response({"error": "TrackGroup not found"}, status=status.HTTP_404_NOT_FOUND)
-
     TrackGroupRating.objects.update_or_create(
         user=request.user,
         track_group=track_group,
         defaults={'score': score}
     )
     track_group.refresh_from_db()
-
     return Response({"status": "rated", "new_score": track_group.rating_score})
 
 
@@ -144,15 +112,12 @@ def rate_track_group(request, group_id):
 def player_manifest(request, content_type_str, object_id):
     from aggregator.models import ExternalContentRegistry
     from aggregator.services import fetch_registry_manifests
-
     if content_type_str.lower() == 'title':
         ctype = ContentType.objects.get_for_model(Title)
     elif content_type_str.lower() == 'episode':
         ctype = ContentType.objects.get_for_model(Episode)
     else:
         return Response({"error": "invalid content type"}, status=400)
-
-    # --- 1. LOCAL SOURCES ---
     track_groups = TrackGroup.objects.filter(
         content_type=ctype,
         object_id=object_id
@@ -160,10 +125,8 @@ def player_manifest(request, content_type_str, object_id):
         'video_asset__variants__preset',
         'additional_tracks__asset__variants'
     ).order_by('-rating_score')
-
     sources = []
     for tg in track_groups:
-        # 1.1 VIDEO
         if tg.video_asset:
             v_variants = tg.video_asset.variants.filter(status='READY').order_by('-preset__width')
             qualities = [
@@ -173,7 +136,6 @@ def player_manifest(request, content_type_str, object_id):
                     "storage_path": v.get_absolute_url()
                 } for v in v_variants
             ]
-
             if qualities:
                 sources.append({
                     "id": f"video_{tg.id}",
@@ -181,13 +143,11 @@ def player_manifest(request, content_type_str, object_id):
                     "type": "VIDEO",
                     "sync_group_id": str(tg.id),
                     "group_title": tg.name,
-                    "group_author": tg.author,  # <-- ДОБАВЛЕНО СЮДА
+                    "group_author": tg.author,
                     "offset_ms": 0,
                     "qualities": qualities,
                     "active_path": qualities[0]["storage_path"]
                 })
-
-        # 1.2 AUDIO & SUBTITLES
         for extra in tg.additional_tracks.all():
             if extra.asset:
                 a_variants = extra.asset.variants.filter(status='READY')
@@ -198,7 +158,6 @@ def player_manifest(request, content_type_str, object_id):
                         "storage_path": v.get_absolute_url()
                     } for v in a_variants
                 ]
-
                 if qualities:
                     sources.append({
                         "id": f"extra_{extra.id}",
@@ -212,26 +171,19 @@ def player_manifest(request, content_type_str, object_id):
                         "qualities": qualities,
                         "active_path": qualities[0]["storage_path"]
                     })
-
-    # --- 2. EXTERNAL SOURCES (PLUGINS) & DOMAIN GATING ---
     domain = getattr(request, 'tenant_domain', None)
-
     registry_qs = ExternalContentRegistry.objects.select_related('plugin').filter(plugin__is_active=True)
     if content_type_str.lower() == 'title':
         registry_qs = registry_qs.filter(title_id=object_id, episode__isnull=True)
     else:
         registry_qs = registry_qs.filter(episode_id=object_id)
-
     valid_entries = []
     for entry in registry_qs:
         allowed = entry.plugin.allowed_domains
-        # Если список разрешенных доменов пуст, либо содержит '*', либо текущий домен в списке
         if not allowed or '*' in allowed or domain in allowed:
             valid_entries.append(entry)
-
     manifest_entries = []
     for entry in valid_entries:
-        # Интеграция внешних iframe-плееров
         if entry.content_type in [ExternalContentRegistry.ContentTypeChoices.EPISODE_IFRAME,
                                   ExternalContentRegistry.ContentTypeChoices.ENTITY_IFRAME]:
             sources.append({
@@ -245,12 +197,8 @@ def player_manifest(request, content_type_str, object_id):
             })
         elif entry.content_type == ExternalContentRegistry.ContentTypeChoices.MANIFEST:
             manifest_entries.append(entry)
-
-    # Параллельный опрос манифестов (Deep Integration)
     ext_manifest_sources = fetch_registry_manifests(manifest_entries)
     sources.extend(ext_manifest_sources)
-
-    # --- 3. NEXT EPISODE LOGIC ---
     next_episode_id = None
     if content_type_str.lower() == 'episode':
         try:
@@ -260,18 +208,15 @@ def player_manifest(request, content_type_str, object_id):
                 season_number=current_ep.season_number,
                 episode_number__gt=current_ep.episode_number
             ).order_by('episode_number').first()
-
             if not next_ep:
                 next_ep = Episode.objects.filter(
                     title=current_ep.title,
                     season_number__gt=current_ep.season_number
                 ).order_by('season_number', 'episode_number').first()
-
             if next_ep:
                 next_episode_id = str(next_ep.id)
         except Episode.DoesNotExist:
             pass
-
     return Response({
         "content_id": str(object_id),
         "next_episode_id": next_episode_id,
@@ -281,24 +226,16 @@ def player_manifest(request, content_type_str, object_id):
 
 @api_view(['POST'])
 def player_telemetry(request):
-    """
-    Called by the video player every X seconds to save progress.
-    Expected JSON: {"title_id": 1, "episode_id": null, "track_group_id": 2, "progress_ms": 15000, "is_completed": false}
-    """
     if not request.user.is_authenticated:
         return Response({"error": "Unauthorized"}, status=401)
-
     data = request.data
     title_id = data.get('title_id')
     if not title_id:
         return Response({"error": "title_id is required"}, status=400)
-
     try:
         title = Title.objects.get(id=title_id)
     except Title.DoesNotExist:
         return Response({"error": "Title not found"}, status=404)
-
-    # Собираем данные
     episode_id = data.get('episode_id')
     track_group_id = data.get('track_group_id')
     audio_asset_id = data.get('audio_asset_id')
@@ -306,7 +243,6 @@ def player_telemetry(request):
     quality_label = data.get('quality_label')
     progress_ms = data.get('progress_ms', 0)
     is_completed = data.get('is_completed', False)
-
     history, _ = WatchHistory.objects.update_or_create(
         user=request.user,
         title=title,
@@ -320,69 +256,45 @@ def player_telemetry(request):
             'is_completed': is_completed
         }
     )
-
     return Response({"status": "saved", "progress_ms": history.progress_ms})
 
 
 @api_view(['GET'])
 def continue_watching(request):
-    """
-    Returns the user's unfinished watch history.
-    """
     if not request.user.is_authenticated:
         return Response([])
-
-    # Get recent history where content is not finished
     history = WatchHistory.objects.filter(
         user=request.user,
         is_completed=False
     ).select_related('title', 'episode')[:10]
-
     serializer = WatchHistorySerializer(history, many=True)
     return Response(serializer.data)
 
 
 @api_view(['GET'])
 def recommendations(request):
-    """
-    Simple Content-Based Filtering algorithm v1.0.
-    Finds highly-rated titles with genres matching the user's recently watched titles.
-    """
-    # 1. Fallback for anonymous users: Top Rated
     if not request.user.is_authenticated:
         top_titles = Title.objects.order_by('-rating_score', '-votes_count')[:10]
         return Response(TitleSerializer(top_titles, many=True).data)
-
-    # 2. Get user's last 3 watched titles
     recent_history = WatchHistory.objects.filter(user=request.user).order_by('-updated_at')[:3]
-
     if not recent_history:
-        # User has no history yet, return Top Rated
         top_titles = Title.objects.order_by('-rating_score', '-votes_count')[:10]
         return Response(TitleSerializer(top_titles, many=True).data)
-
     preferred_genres = set()
     for item in recent_history:
         for genre in item.title.genres.all():
             preferred_genres.add(genre.id)
-
-    from .models import Favorite
     user_favorites = Favorite.objects.filter(user=request.user).select_related('title').prefetch_related(
         'title__genres')
     for fav in user_favorites:
         for genre in fav.title.genres.all():
             preferred_genres.add(genre.id)
-
-    # 4. Find titles matching these genres, exclude already watched
     watched_title_ids = WatchHistory.objects.filter(user=request.user).values_list('title_id', flat=True)
-
     recommended = Title.objects.filter(
         genres__in=preferred_genres
     ).exclude(
         id__in=watched_title_ids
     ).distinct().order_by('-rating_score')[:10]
-
-    # 5. If recommendations are fewer than 10 (e.g. niche genres), pad with overall top titles
     if len(recommended) < 10:
         pad_amount = 10 - len(recommended)
         extra_titles = Title.objects.exclude(
@@ -391,7 +303,6 @@ def recommendations(request):
             id__in=[t.id for t in recommended]
         ).order_by('-rating_score')[:pad_amount]
         recommended = list(recommended) + list(extra_titles)
-
     return Response(TitleSerializer(recommended, many=True).data)
 
 
@@ -400,12 +311,9 @@ class HomeView(TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-
-        # Получаем разные подборки для главной страницы
         context['trending'] = Title.objects.all().order_by('-rating_score', '-created_at')[:12]
         context['new_movies'] = Title.objects.filter(type=Title.Type.MOVIE).order_by('-created_at')[:6]
         context['new_series'] = Title.objects.filter(type=Title.Type.SERIES).order_by('-created_at')[:6]
-
         return context
 
 
@@ -420,8 +328,6 @@ class WatchView(DetailView):
         context['player_id'] = self.object.id
         context['title_id'] = self.object.id
         context['episode_id'] = ''
-
-        # Fetch telemetry data
         context['start_progress'] = 0
         context['last_track_group'] = ''
         context['last_audio_asset'] = ''
@@ -432,67 +338,44 @@ class WatchView(DetailView):
         context['language_code'] = 'rus'
         context['preferred_voiceovers'] = '[]'
         context['auto_skip'] = 'false'
-
-        title_obj = self.object if hasattr(self,
-                                           'object') and self.template_name == 'content/watch.html' and 'Episode' not in str(
-            self.__class__) else getattr(self.object, 'title', self.object)
-
+        title_obj = self.object
         if self.request.user.is_authenticated:
             pref, _ = UserPreference.objects.get_or_create(user=self.request.user)
             context['language_code'] = pref.language_code
             context['preferred_voiceovers'] = json.dumps(pref.preferred_voiceovers)
             context['auto_skip'] = 'true' if pref.auto_skip_intro else 'false'
-
             if Favorite.objects.filter(user=self.request.user, title=title_obj).exists():
                 context['is_favorite'] = 'true'
-
             history = WatchHistory.objects.filter(user=self.request.user, title=title_obj).first()
             if history:
                 context['last_track_group'] = history.track_group_id or ''
                 context['last_audio_asset'] = str(history.last_audio_asset_id) if history.last_audio_asset_id else ''
                 context['last_audio_track_name'] = history.last_audio_track_name or ''
                 context['last_quality'] = history.last_quality_label or ''
-                if hasattr(self.object, 'season_number'):  # Проверка для EpisodeWatchView
-                    if history.episode_id == self.object.id:
-                        context['start_progress'] = history.progress_ms
-                else:
-                    context['start_progress'] = history.progress_ms
-
-                context['last_track_group'] = history.track_group_id or ''
-                context['last_audio_asset'] = str(history.last_audio_asset_id) if history.last_audio_asset_id else ''
-                context['last_quality'] = history.last_quality_label or ''
-
+                context['start_progress'] = history.progress_ms
             rating = TitleRating.objects.filter(user=self.request.user, title=self.object).first()
             if rating:
                 context['user_title_rating'] = rating.score
-
         return context
 
 
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def save_workbench(request, content_type_str, object_id):
-    """
-    Сохраняет собранную в Vue Воркбенче группу дорожек.
-    """
     if content_type_str.lower() == 'title':
         ctype = ContentType.objects.get_for_model(Title)
     elif content_type_str.lower() == 'episode':
         ctype = ContentType.objects.get_for_model(Episode)
     else:
         return Response({"error": "Invalid content type"}, status=status.HTTP_400_BAD_REQUEST)
-
     data = request.data
     group_name = data.get('name', 'Custom Version')
     video_asset_id = data.get('video_asset_id')
-    tracks = data.get('tracks', [])  # [{asset_id, language, offset_ms}]
-
+    tracks = data.get('tracks', [])
     try:
         video_asset = Asset.objects.get(id=video_asset_id, type=Asset.Type.VIDEO)
     except Asset.DoesNotExist:
         return Response({"error": "Invalid Video Asset"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # 1. Создаем или обновляем базовую группу (TrackGroup)
     author = data.get('author', '')
     track_group = TrackGroup.objects.create(
         name=group_name,
@@ -501,7 +384,6 @@ def save_workbench(request, content_type_str, object_id):
         object_id=object_id,
         video_asset=video_asset
     )
-
     for t in tracks:
         try:
             asset = Asset.objects.get(id=t['asset_id'])
@@ -514,11 +396,6 @@ def save_workbench(request, content_type_str, object_id):
             )
         except Asset.DoesNotExist:
             continue
-
-    if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'NODE':
-        from .tasks import push_track_group_to_hub
-        transaction.on_commit(lambda: push_track_group_to_hub.delay(track_group.id))
-
     return Response({"status": "success", "track_group_id": track_group.id})
 
 
@@ -529,15 +406,12 @@ class EpisodeWatchView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        # title нужен шаблону для отображения общей информации о сериале
         title = self.object.title
         context['title'] = title
         context['content_type'] = 'episode'
-        context['player_id'] = self.object.id  # ID Эпизода
+        context['player_id'] = self.object.id
         context['title_id'] = title.id
         context['episode_id'] = self.object.id
-
-        # Fetch telemetry data
         context['start_progress'] = 0
         context['last_track_group'] = ''
         context['last_audio_asset'] = ''
@@ -548,56 +422,37 @@ class EpisodeWatchView(DetailView):
         context['language_code'] = 'rus'
         context['preferred_voiceovers'] = '[]'
         context['auto_skip'] = 'false'
-
-        title_obj = self.object if hasattr(self,
-                                           'object') and self.template_name == 'content/watch.html' and 'Episode' not in str(
-            self.__class__) else getattr(self.object, 'title', self.object)
-
         if self.request.user.is_authenticated:
             pref, _ = UserPreference.objects.get_or_create(user=self.request.user)
             context['language_code'] = pref.language_code
             context['preferred_voiceovers'] = json.dumps(pref.preferred_voiceovers)
             context['auto_skip'] = 'true' if pref.auto_skip_intro else 'false'
-
-            if Favorite.objects.filter(user=self.request.user, title=title_obj).exists():
+            if Favorite.objects.filter(user=self.request.user, title=title).exists():
                 context['is_favorite'] = 'true'
-
-            history = WatchHistory.objects.filter(user=self.request.user, title=title_obj).first()
+            history = WatchHistory.objects.filter(user=self.request.user, title=title).first()
             if history:
                 context['last_track_group'] = history.track_group_id or ''
                 context['last_audio_asset'] = str(history.last_audio_asset_id) if history.last_audio_asset_id else ''
                 context['last_audio_track_name'] = history.last_audio_track_name or ''
                 context['last_quality'] = history.last_quality_label or ''
-                if hasattr(self.object, 'season_number'):  # Проверка для EpisodeWatchView
-                    if history.episode_id == self.object.id:
-                        context['start_progress'] = history.progress_ms
-                else:
+                if history.episode_id == self.object.id:
                     context['start_progress'] = history.progress_ms
-
             rating = TitleRating.objects.filter(user=self.request.user, title=title).first()
             if rating:
                 context['user_title_rating'] = rating.score
-
         return context
 
 
 @api_view(['GET'])
 def player_external_sources(request, content_type_str, object_id):
-    """
-    Deprecated. Данные теперь интегрируются непосредственно в player_manifest.
-    Оставлено для совместимости с текущим фронтендом до его обновления.
-    """
     return Response({"sources": []})
 
 
 class GenreViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    Отдает список всех жанров для фильтров на фронтенде.
-    """
     queryset = Genre.objects.all().order_by('name')
     serializer_class = GenreSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
-    pagination_class = None  # Отключаем пагинацию, чтобы вернуть плоский массив
+    pagination_class = None
 
 
 class CatalogView(TemplateView):
@@ -605,60 +460,30 @@ class CatalogView(TemplateView):
 
 
 @api_view(['GET'])
+@permission_classes([IsAdminUser])
 def content_tree_api(request):
-    """Возвращает иерархию. Если это NODE — запрашивает у HUB. Если HUB — отдает из БД."""
-    if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'NODE':
-        # Proxy request to HUB
-        hub_url = getattr(settings, 'HUB_URL', '').rstrip('/')
-        hub_token = getattr(settings, 'HUB_API_TOKEN', '')
-        try:
-            resp = requests.get(
-                f"{hub_url}/api/v1/content/tree/",
-                headers={"Authorization": f"Bearer {hub_token}"},
-                timeout=10
-            )
-            return Response(resp.json(), status=resp.status_code)
-        except Exception as e:
-            return Response({"error": f"Hub unreachable: {str(e)}"}, status=503)
-
-    # Логика HUB: проверка авторизации провайдера
-    provider = check_provider_auth(request)
-    if not provider and not request.user.is_staff:
-        return Response({"error": "Unauthorized"}, status=401)
-
-    # 1. Получаем все тайтлы и эпизоды
     titles = Title.objects.prefetch_related('episodes').all()
     title_ctype = ContentType.objects.get_for_model(Title)
     episode_ctype = ContentType.objects.get_for_model(Episode)
-
-    # 2. Получаем все TrackGroups со всеми вложенными треками
     from django.db.models import Prefetch
     all_track_groups = TrackGroup.objects.prefetch_related(
         Prefetch('additional_tracks', queryset=AdditionalTrack.objects.select_related('asset'))
     ).select_related('provider').all()
-
-    # 3. Группируем их по контенту в словари (Ключ - ВСЕГДА строка UUID)
     groups_by_title = {}
     groups_by_episode = {}
-
     for g in all_track_groups:
-        key = str(g.object_id)  # Гарантируем, что ключ - строка
+        key = str(g.object_id)
         if g.content_type_id == title_ctype.id:
             groups_by_title.setdefault(key, []).append(g)
         elif g.content_type_id == episode_ctype.id:
             groups_by_episode.setdefault(key, []).append(g)
-
-    # 4. Собираем финальное дерево
     tree = []
     for t in titles:
-        t_id_str = str(t.id)  # ID текущего фильма как строка
-
-        # Обработка эпизодов этого тайтла
+        t_id_str = str(t.id)
         episodes_data = []
         for ep in t.episodes.all():
             ep_id_str = str(ep.id)
             ep_groups = groups_by_episode.get(ep_id_str, [])
-
             episodes_data.append({
                 'id': ep_id_str,
                 'name': str(ep),
@@ -681,10 +506,7 @@ def content_tree_api(request):
                     } for g in ep_groups
                 ]
             })
-
-        # Группы, привязанные напрямую к Тайтлу (для фильмов)
         title_groups = groups_by_title.get(t_id_str, [])
-
         tree.append({
             'id': t_id_str,
             'name': t.name,
@@ -707,87 +529,7 @@ def content_tree_api(request):
                 } for g in title_groups
             ]
         })
-
     return Response(tree)
-
-
-@api_view(['GET'])
-def metadata_sync_detail_api(request, model_type, uuid_str):
-    """Отдает полные метаданные объекта для зеркалирования на NODE."""
-    provider = check_provider_auth(request)
-    if not provider:
-        return Response({"error": "Unauthorized"}, status=401)
-
-    if model_type == 'title':
-        obj = get_object_or_404(Title, id=uuid_str)
-        return Response({
-            "id": str(obj.id),
-            "name": obj.name,
-            "original_name": obj.original_name,
-            "description": obj.description,
-            "type": obj.type,
-            "release_year": obj.release_year,
-            "genres": [g.name for g in obj.genres.all()]
-        })
-    elif model_type == 'episode':
-        obj = get_object_or_404(Episode, id=uuid_str)
-        return Response({
-            "id": str(obj.id),
-            "title_id": str(obj.title_id),
-            "season_number": obj.season_number,
-            "episode_number": obj.episode_number,
-            "name": obj.name
-        })
-    return Response({"error": "Invalid type"}, status=400)
-
-
-def ensure_metadata_stub(target_id, target_type):
-    """
-    Проверяет наличие объекта в локальной БД. Если нет — скачивает с HUB.
-    """
-    if target_type == 'title':
-        if Title.objects.filter(id=target_id).exists():
-            return True
-        model_name = 'title'
-    else:
-        if Episode.objects.filter(id=target_id).exists():
-            return True
-        model_name = 'episode'
-
-    hub_url = getattr(settings, 'HUB_URL', '').rstrip('/')
-    hub_token = getattr(settings, 'HUB_API_TOKEN', '')
-
-    try:
-        resp = requests.get(
-            f"{hub_url}/api/v1/content/sync/metadata/{model_name}/{target_id}/",
-            headers={"Authorization": f"Bearer {hub_token}"},
-            timeout=5
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            if model_name == 'title':
-                Title.objects.create(
-                    id=data['id'],
-                    name=data['name'],
-                    original_name=data['original_name'],
-                    type=data['type'],
-                    release_year=data['release_year']
-                )
-            else:
-                # Для эпизода сначала убеждаемся, что есть тайтл
-                ensure_metadata_stub(data['title_id'], 'title')
-                Episode.objects.create(
-                    id=data['id'],
-                    title_id=data['title_id'],
-                    season_number=data['season_number'],
-                    episode_number=data['episode_number'],
-                    name=data['name']
-                )
-            return True
-    except Exception as e:
-        logger.error(f"Lazy sync failed for {target_id}: {e}")
-
-    return False
 
 
 @api_view(['POST'])
@@ -798,35 +540,24 @@ def assign_file_api(request):
     target_type = request.data.get('target_type')
     drop_type = request.data.get('drop_type')
     selected_streams = request.data.get('selected_streams', [])
-
-    if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'NODE':
-        success = ensure_metadata_stub(target_id, target_type)
-        if not success:
-            return Response({"error": "Could not sync metadata from Hub"}, status=502)
     try:
         raw_file = RawMediaFile.objects.get(id=raw_file_id)
     except RawMediaFile.DoesNotExist:
         return Response({"error": "File not found"}, status=404)
-
     with transaction.atomic():
         new_variants_to_extract = []
-
         if drop_type == 'new_group':
             v_stream_info = next((s for s in selected_streams if s.get('is_video')), None)
             if not v_stream_info:
                 return Response({"error": "Video stream required"}, status=400)
-
             v_stream = raw_file.streams.get(index=v_stream_info['index'])
             source_width = v_stream.extra_info.get('width', 0)
-
             video_asset, _ = Asset.objects.get_or_create(source_stream=v_stream, type=Asset.Type.VIDEO)
-
             orig_var, v_created = AssetVariant.objects.get_or_create(
                 asset=video_asset, quality_label="Original",
                 defaults={'status': AssetVariant.Status.PROCESSING}
             )
             if v_created: new_variants_to_extract.append(orig_var.id)
-
             default_presets = TranscodingPreset.objects.filter(type='VIDEO', is_default=True)
             for p in default_presets:
                 if p.width and p.width <= source_width:
@@ -835,14 +566,11 @@ def assign_file_api(request):
                         defaults={'status': AssetVariant.Status.PROCESSING}
                     )
                     if p_created: new_variants_to_extract.append(p_var.id)
-
             if target_type == 'title':
                 content_object = get_object_or_404(Title, pk=target_id)
-            else:  # episode
+            else:
                 content_object = get_object_or_404(Episode, pk=target_id)
-
             group_author = request.data.get('group_author', '')
-
             track_group = TrackGroup.objects.create(
                 name=f"Version {(raw_file.original_name or 'New')[:30]}",
                 author=group_author,
@@ -851,12 +579,10 @@ def assign_file_api(request):
             )
         else:
             track_group = get_object_or_404(TrackGroup, pk=target_id)
-
         for s_info in selected_streams:
             if s_info.get('is_video'): continue
             stream = raw_file.streams.get(index=s_info['index'])
             audio_asset, _ = Asset.objects.get_or_create(source_stream=stream, type=stream.codec_type)
-
             variant, v_created = AssetVariant.objects.get_or_create(
                 asset=audio_asset,
                 quality_label="Original",
@@ -864,7 +590,6 @@ def assign_file_api(request):
             )
             if v_created:
                 new_variants_to_extract.append(variant.id)
-
             if not AdditionalTrack.objects.filter(track_group=track_group, asset=audio_asset).exists():
                 AdditionalTrack.objects.create(
                     track_group=track_group, asset=audio_asset,
@@ -872,22 +597,12 @@ def assign_file_api(request):
                     author=s_info.get('author', ''),
                     offset_ms=s_info.get('offset_ms', 0)
                 )
-
         transaction.on_commit(lambda: [extract_stream_task.delay(str(vid)) for vid in new_variants_to_extract])
-
-        if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'NODE':
-            from .tasks import push_track_group_to_hub
-            transaction.on_commit(lambda: push_track_group_to_hub.delay(str(track_group.id)))
-
     return Response({"status": "success", "reused_count": len(selected_streams) - len(new_variants_to_extract)})
 
 
 @staff_member_required
 def upload_wizard_view(request):
-    """
-    Рендерит страницу Upload Wizard в рамках интерфейса Django Admin.
-    """
-    # Добавляем базовый контекст админки, чтобы работали стили шапки
     context = {
         'site_header': 'Just Content Admin',
         'has_permission': True,
@@ -905,13 +620,6 @@ class EpisodeViewSet(viewsets.ModelViewSet):
 class TrackGroupViewSet(mixins.DestroyModelMixin, viewsets.GenericViewSet):
     queryset = TrackGroup.objects.all()
     permission_classes = [IsAdminUser]
-
-    def perform_destroy(self, instance):
-        tg_id = str(instance.id)
-        instance.delete()
-        if getattr(settings, 'PLATFORM_ROLE', 'NODE') == 'NODE':
-            from .tasks import push_delete_track_group_to_hub
-            push_delete_track_group_to_hub.delay(tg_id)
 
 
 class AdditionalTrackViewSet(mixins.DestroyModelMixin, viewsets.GenericViewSet):
