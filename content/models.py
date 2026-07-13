@@ -41,6 +41,7 @@ class Title(models.Model):
     votes_count = models.IntegerField(default=0)
     metadata_priority_level = models.IntegerField(default=0, help_text="Приоритет последнего обновившего источника")
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.name
