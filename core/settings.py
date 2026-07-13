@@ -113,12 +113,17 @@ LOGOUT_REDIRECT_URL = 'home'
 CELERY_BEAT_SCHEDULE = {
     'verify-plugins-daily': {
         'task': 'aggregator.tasks.verify_plugin_registry',
-        'schedule': crontab(hour=3, minute=0),
+        'schedule': crontab(hour=3, minute=22),
     },
     'sync-kodik-updates-hourly': {
         'task': 'kodik_plugin.tasks.sync_kodik_updates_task',
-        'schedule': crontab(minute=0),
+        'schedule': crontab(minute=13),
         'kwargs': {'limit': 100},
+    },
+    'update-existing-series-daily': {
+        'task': 'kodik_plugin.tasks.update_existing_titles_task',
+        'schedule': crontab(hour=4, minute=7),
+        'kwargs': {'title_type': 'SERIES', 'delay': 0.5},
     },
 }
 
