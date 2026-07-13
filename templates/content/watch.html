@@ -71,6 +71,7 @@
                 {% endif %}
             </div>
         </div>
+
         {% if title.type == 'SERIES' %}
             <div class="mt-12 bg-card p-6 rounded-xl border border-gray-800">
                 <h2 class="text-2xl font-bold mb-4">Episodes</h2>
@@ -86,5 +87,7 @@
                 </div>
             </div>
         {% endif %}
+
+        <div id="vue-similar-titles" data-title-id="{{ title.id }}"></div>
     </div>
 {% endblock %}

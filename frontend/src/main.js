@@ -10,6 +10,7 @@ import TitleRating from './components/TitleRating.vue';
 import UploadWizard from './components/admin/UploadWizard.vue';
 import FavoriteButton from "./components/FavoriteButton.vue";
 import ProfileDashboard from "./components/ProfileDashboard.vue";
+import SimilarTitles from "./components/SimilarTitles.vue";
 
 document.addEventListener('DOMContentLoaded', () => {
     const favoriteMounts = document.querySelectorAll('.vue-favorite-button');
@@ -64,6 +65,13 @@ document.addEventListener('DOMContentLoaded', () => {
             csrfToken: playerMount.dataset.csrf
         });
         app.mount('#vue-player-mount');
+    }
+
+    const similarTitlesMount = document.getElementById('vue-similar-titles');
+    if (similarTitlesMount) {
+        createApp(SimilarTitles, {
+            titleId: similarTitlesMount.dataset.titleId
+        }).mount('#vue-similar-titles');
     }
 
     const profileMount = document.getElementById('vue-profile-mount');
