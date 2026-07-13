@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "just-content-platform"
-version = "0.8.1"
+version = "0.8.2"
 description = ""
 authors = ["Dmitriy <dimnissv@yandex.kz>"]
 readme = "README.md"
@@ -22,6 +22,7 @@ django-cors-headers = "^4.9.0"
 eventlet = "^0.41.0"
 requests = "^2.33.1"
 psycopg2-binary = "^2.9.12"
+concurrent-log-handler = "^0.9.29"
 
 
 [build-system]

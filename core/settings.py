@@ -151,7 +151,7 @@ LOGGING = {
         },
         'app_file_handler': {
             'level': 'INFO',
-            'class': 'logging.handlers.RotatingFileHandler',
+            'class': 'concurrent_log_handler.ConcurrentRotatingFileHandler',
             'filename': LOG_DIR / 'app.log',
             'maxBytes': 1024 * 1024 * 10,
             'backupCount': 5,
@@ -160,7 +160,7 @@ LOGGING = {
         },
         'kodik_file_handler': {
             'level': 'DEBUG',
-            'class': 'logging.handlers.RotatingFileHandler',
+            'class': 'concurrent_log_handler.ConcurrentRotatingFileHandler',
             'filename': LOG_DIR / 'kodik_plugin.log',
             'maxBytes': 1024 * 1024 * 10,
             'backupCount': 5,
@@ -169,7 +169,7 @@ LOGGING = {
         },
         'error_file_handler': {
             'level': 'WARNING',
-            'class': 'logging.handlers.RotatingFileHandler',
+            'class': 'concurrent_log_handler.ConcurrentRotatingFileHandler',
             'filename': LOG_DIR / 'errors.log',
             'maxBytes': 1024 * 1024 * 10,
             'backupCount': 5,
