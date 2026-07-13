@@ -1,3 +1,4 @@
+from django.apps import apps
 from django.db.models import Q
 
 
@@ -15,8 +16,11 @@ def parse_ast_to_q(node: dict) -> Q:
         if not field or value is None or value == '':
             return Q()
 
+        if field == 'genre':
+            Title = apps.get_model('content', 'Title')
+            return Q(id__in=Title.objects.filter(genres__slug=value).values('id'))
+
         field_mapping = {
-            'genre': 'genres__slug',
             'type': 'type',
             'release_year': 'release_year',
             'rating_score': 'rating_score',
