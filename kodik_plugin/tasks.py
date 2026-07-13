@@ -1,6 +1,8 @@
 import logging
+
 from celery import shared_task
 from django.conf import settings
+
 from kodik_plugin.adapters.local_adapter import LocalServiceAdapter
 from kodik_plugin.client.list_api import KodikListClient
 from kodik_plugin.sync.orchestrator import KodikSyncOrchestrator
@@ -16,28 +18,44 @@ def sync_kodik_updates_task(limit: int = 100):
     """
     token = getattr(settings, 'KODIK_API_TOKEN', '')
     plugin_id = getattr(settings, 'KODIK_PLUGIN_ID', 1)
-
     if not token:
         logger.error("KODIK_API_TOKEN is not configured in Django settings. Aborting sync task.")
         return "Failed: Missing KODIK_API_TOKEN"
-
     try:
         client = KodikListClient(token=token)
         adapter = LocalServiceAdapter(plugin_id=plugin_id)
         orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
-
         logger.info(f"Starting background Kodik sync for the latest {limit} items.")
-
-        # We explicitly do not resume state for the hourly update task.
-        # It scans the most recent items strictly sorted by updated_at desc.
         success, error = orchestrator.run_sync_api(
             resume=False,
             max_items=limit,
             sort='updated_at',
             order='desc'
         )
-
         return f"Sync complete. Success: {success}, Errors: {error}"
     except Exception as e:
         logger.exception("Fatal error occurred during background Kodik sync execution.")
+        return f"Failed: {str(e)}"
+
+
+@shared_task
+def update_existing_titles_task(title_type: str = 'SERIES', delay: float = 0.5):
+    """
+    Celery task to update already existing titles in the database
+    with fresh data from the Kodik API (useful for ongoing series).
+    """
+    token = getattr(settings, 'KODIK_API_TOKEN', '')
+    plugin_id = getattr(settings, 'KODIK_PLUGIN_ID', 1)
+    if not token:
+        logger.error("KODIK_API_TOKEN is not configured in Django settings. Aborting update task.")
+        return "Failed: Missing KODIK_API_TOKEN"
+    try:
+        client = KodikListClient(token=token)
+        adapter = LocalServiceAdapter(plugin_id=plugin_id)
+        orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
+        logger.info(f"Starting background update for existing {title_type} titles.")
+        success, error = orchestrator.run_update_existing(title_type=title_type, delay=delay)
+        return f"Update complete. Success: {success}, Errors: {error}"
+    except Exception as e:
+        logger.exception("Fatal error occurred during background existing titles update.")
         return f"Failed: {str(e)}"
