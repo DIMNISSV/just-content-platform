@@ -24,6 +24,12 @@ class Command(BaseCommand):
         # Dumps
         parser.add_argument('--dump', type=str, help='Use file dump instead of API (e.g., films, serials, films/anime)')
 
+        # Updating existing titles in DB
+        parser.add_argument('--update-existing', action='store_true', help='Update existing titles in DB')
+        parser.add_argument('--update-type', type=str, choices=['SERIES', 'MOVIE', 'ALL'], default='SERIES',
+                            help='Type of titles to update')
+        parser.add_argument('--delay', type=float, default=0.5, help='Delay between API requests for existing updates')
+
         # Generic API Params
         parser.add_argument('--types', type=str, default='', help='Comma-separated Kodik content types for API')
         parser.add_argument('--sort', type=str, default='updated_at',
@@ -58,6 +64,17 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR("--webhook-url is required when using HTTP adapter."))
                 return
             adapter = HTTPWebhookAdapter(webhook_url=webhook_url, secret_token=webhook_secret)
+
+        if options['update_existing']:
+            client = KodikListClient(token=token)
+            orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
+            self.stdout.write(self.style.NOTICE(f"Starting to update existing {options['update_type']} titles..."))
+            success, error = orchestrator.run_update_existing(
+                title_type=options['update_type'],
+                delay=options['delay']
+            )
+            self.stdout.write(self.style.SUCCESS(f"Update done. Success: {success}, Errors: {error}."))
+            return
 
         is_dump = bool(options['dump'])
         specific_ids = {
