@@ -123,7 +123,7 @@ CELERY_BEAT_SCHEDULE = {
     'update-existing-series-daily': {
         'task': 'kodik_plugin.tasks.update_existing_titles_task',
         'schedule': crontab(hour=4, minute=7),
-        'kwargs': {'title_type': 'SERIES', 'delay': 0.5},
+        'kwargs': {'title_type': 'SERIES', 'delay': 0.5, 'stale_minutes': 60},
     },
 }
 

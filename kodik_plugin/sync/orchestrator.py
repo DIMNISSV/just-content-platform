@@ -1,8 +1,10 @@
 import json
 import logging
 import time
+from datetime import timedelta
 
 from django.db.models import Q
+from django.utils import timezone
 
 from content.models import Title
 from kodik_plugin.adapters.base import BaseJCPAdapter
@@ -25,17 +27,23 @@ class KodikSyncOrchestrator:
         self.adapter = adapter
         self.plugin_id = plugin_id
 
-    def run_update_existing(self, title_type: str = 'SERIES', delay: float = 0.5) -> tuple[int, int]:
+    def run_update_existing(self, title_type: str = 'SERIES', delay: float = 0.5, stale_minutes: int = 0) -> tuple[
+        int, int]:
         """
         Iterates over existing titles in the database and updates them via Kodik search API.
         """
-        logger.info(f"Starting update of existing titles. Type: {title_type}, Delay: {delay}s")
+        logger.info(
+            f"Starting update of existing titles. Type: {title_type}, Delay: {delay}s, Stale minutes: {stale_minutes}")
 
         query = ~Q(shiki_id='') | ~Q(kp_id='') | ~Q(imdb_id='') | ~Q(mdl_id='')
         qs = Title.objects.filter(query)
 
         if title_type in ['SERIES', 'MOVIE']:
             qs = qs.filter(type=title_type)
+
+        if stale_minutes > 0:
+            stale_threshold = timezone.now() - timedelta(minutes=stale_minutes)
+            qs = qs.filter(updated_at__lt=stale_threshold)
 
         titles = qs.iterator()
         success_count, error_count, processed_count = 0, 0, 0

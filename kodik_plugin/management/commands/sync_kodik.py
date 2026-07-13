@@ -29,6 +29,7 @@ class Command(BaseCommand):
         parser.add_argument('--update-type', type=str, choices=['SERIES', 'MOVIE', 'ALL'], default='SERIES',
                             help='Type of titles to update')
         parser.add_argument('--delay', type=float, default=0.5, help='Delay between API requests for existing updates')
+        parser.add_argument('--stale-minutes', type=int, default=0, help='Update only titles older than N minutes')
 
         # Generic API Params
         parser.add_argument('--types', type=str, default='', help='Comma-separated Kodik content types for API')
@@ -71,7 +72,8 @@ class Command(BaseCommand):
             self.stdout.write(self.style.NOTICE(f"Starting to update existing {options['update_type']} titles..."))
             success, error = orchestrator.run_update_existing(
                 title_type=options['update_type'],
-                delay=options['delay']
+                delay=options['delay'],
+                stale_minutes=options['stale_minutes']
             )
             self.stdout.write(self.style.SUCCESS(f"Update done. Success: {success}, Errors: {error}."))
             return

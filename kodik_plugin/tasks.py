@@ -39,7 +39,7 @@ def sync_kodik_updates_task(limit: int = 100):
 
 
 @shared_task
-def update_existing_titles_task(title_type: str = 'SERIES', delay: float = 0.5):
+def update_existing_titles_task(title_type: str = 'SERIES', delay: float = 0.5, stale_minutes: int = 1440):
     """
     Celery task to update already existing titles in the database
     with fresh data from the Kodik API (useful for ongoing series).
@@ -53,8 +53,12 @@ def update_existing_titles_task(title_type: str = 'SERIES', delay: float = 0.5):
         client = KodikListClient(token=token)
         adapter = LocalServiceAdapter(plugin_id=plugin_id)
         orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
-        logger.info(f"Starting background update for existing {title_type} titles.")
-        success, error = orchestrator.run_update_existing(title_type=title_type, delay=delay)
+        logger.info(f"Starting background update for existing {title_type} titles (Stale > {stale_minutes}m).")
+        success, error = orchestrator.run_update_existing(
+            title_type=title_type,
+            delay=delay,
+            stale_minutes=stale_minutes
+        )
         return f"Update complete. Success: {success}, Errors: {error}"
     except Exception as e:
         logger.exception("Fatal error occurred during background existing titles update.")
