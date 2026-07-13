@@ -3,6 +3,7 @@ import logging
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 from django.db import transaction
 from django.shortcuts import render, get_object_or_404
 from django.views.generic import DetailView, TemplateView
@@ -18,6 +19,7 @@ from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory,
     Favorite
 from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, GenreSerializer, \
     EpisodeSerializer
+from .services.search_builder import parse_ast_to_q
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,23 @@ class TitleViewSet(viewsets.ReadOnlyModelViewSet):
         if genre:
             qs = qs.filter(genres__slug=genre)
         return qs
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticatedOrReadOnly])
+    def advanced_search(self, request):
+        ast = request.data.get('query')
+        if not ast:
+            return Response({"error": "No query provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        q_obj = parse_ast_to_q(ast)
+        qs = self.get_queryset().filter(q_obj).distinct()
+
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated], url_path='toggle-favorite')
     def toggle_favorite(self, request, pk=None):
