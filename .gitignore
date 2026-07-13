@@ -27,3 +27,5 @@ staticfiles/
 
 celerybeat-schedule.*
 .code
+
+logs/

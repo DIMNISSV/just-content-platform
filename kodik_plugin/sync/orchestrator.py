@@ -1,5 +1,10 @@
 import json
 import logging
+import time
+
+from django.db.models import Q
+
+from content.models import Title
 from kodik_plugin.adapters.base import BaseJCPAdapter
 from kodik_plugin.client.list_api import KodikListClient
 from kodik_plugin.client.dump_api import KodikDumpClient
@@ -19,6 +24,62 @@ class KodikSyncOrchestrator:
         self.client = client
         self.adapter = adapter
         self.plugin_id = plugin_id
+
+    def run_update_existing(self, title_type: str = 'SERIES', delay: float = 0.5) -> tuple[int, int]:
+        """
+        Iterates over existing titles in the database and updates them via Kodik search API.
+        """
+        logger.info(f"Starting update of existing titles. Type: {title_type}, Delay: {delay}s")
+
+        query = ~Q(shiki_id='') | ~Q(kp_id='') | ~Q(imdb_id='') | ~Q(mdl_id='')
+        qs = Title.objects.filter(query)
+
+        if title_type in ['SERIES', 'MOVIE']:
+            qs = qs.filter(type=title_type)
+
+        titles = qs.iterator()
+        success_count, error_count, processed_count = 0, 0, 0
+
+        for title in titles:
+            search_kwargs = {}
+            if title.shiki_id:
+                search_kwargs['shikimori_id'] = title.shiki_id
+            elif title.kp_id:
+                search_kwargs['kinopoisk_id'] = title.kp_id
+            elif title.imdb_id:
+                search_kwargs['imdb_id'] = title.imdb_id
+            elif title.mdl_id:
+                search_kwargs['mdl_id'] = title.mdl_id
+            else:
+                continue
+
+            try:
+                data = self.client.get_page(use_search=True, **search_kwargs)
+                results = data.get('results', [])
+
+                if not results:
+                    logger.debug(f"No results found in Kodik for Title {title.name} ({search_kwargs})")
+                    if delay > 0:
+                        time.sleep(delay)
+                    continue
+
+                for item in results:
+                    succ, err = self._process_item(item)
+                    success_count += succ
+                    error_count += err
+
+                processed_count += 1
+
+            except Exception as e:
+                logger.error(f"Error updating Title {title.name} ({title.id}): {e}")
+                error_count += 1
+
+            if delay > 0:
+                time.sleep(delay)
+
+        logger.info(
+            f"Finished updating existing titles. Processed: {processed_count}. Success: {success_count}, Errors: {error_count}.")
+        return success_count, error_count
 
     def run_sync_api(self, resume: bool = False, max_pages: int = 0, max_items: int = 0,
                      state_key: str = 'api_sync_default', use_search: bool = False, **kwargs) -> tuple[int, int]:
