@@ -9,7 +9,7 @@ from django.shortcuts import render, get_object_or_404
 from django.views.generic import DetailView, TemplateView
 from rest_framework import viewsets, filters, status, mixins
 from rest_framework.decorators import api_view, action, permission_classes
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser, AllowAny
 from rest_framework.response import Response
 
 from media.models import Asset, RawMediaFile, AssetVariant, TranscodingPreset
@@ -62,6 +62,25 @@ class TitleViewSet(viewsets.ReadOnlyModelViewSet):
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], permission_classes=[AllowAny])
+    def similar(self, request, pk=None):
+        title = self.get_object()
+
+        vector = SearchVector('name', weight='A') + SearchVector('description', weight='B')
+        query = SearchQuery(title.name)
+
+        qs = self.get_queryset().annotate(
+            rank=SearchRank(vector, query)
+        ).exclude(pk=title.pk).filter(rank__gte=0.05).order_by('-rank')[:10]
+
+        if not qs.exists():
+            genre_ids = title.genres.values_list('id', flat=True)
+            qs = self.get_queryset().filter(genres__in=genre_ids).exclude(pk=title.pk).distinct().order_by(
+                '-rating_score')[:10]
 
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
@@ -295,25 +314,45 @@ def recommendations(request):
     if not request.user.is_authenticated:
         top_titles = Title.objects.order_by('-rating_score', '-votes_count')[:10]
         return Response(TitleSerializer(top_titles, many=True).data)
+
     recent_history = WatchHistory.objects.filter(user=request.user).order_by('-updated_at')[:3]
     if not recent_history:
         top_titles = Title.objects.order_by('-rating_score', '-votes_count')[:10]
         return Response(TitleSerializer(top_titles, many=True).data)
-    preferred_genres = set()
-    for item in recent_history:
-        for genre in item.title.genres.all():
-            preferred_genres.add(genre.id)
-    user_favorites = Favorite.objects.filter(user=request.user).select_related('title').prefetch_related(
-        'title__genres')
-    for fav in user_favorites:
-        for genre in fav.title.genres.all():
-            preferred_genres.add(genre.id)
+
     watched_title_ids = WatchHistory.objects.filter(user=request.user).values_list('title_id', flat=True)
-    recommended = Title.objects.filter(
-        genres__in=preferred_genres
-    ).exclude(
-        id__in=watched_title_ids
-    ).distinct().order_by('-rating_score')[:10]
+    search_texts = [item.title.name for item in recent_history]
+    query_str = " | ".join(search_texts)
+
+    query = SearchQuery(query_str, search_type='raw')
+    vector = SearchVector('name', weight='A') + SearchVector('description', weight='B')
+
+    recommended = Title.objects.annotate(
+        rank=SearchRank(vector, query)
+    ).exclude(id__in=watched_title_ids).filter(rank__gte=0.05).order_by('-rank')[:10]
+
+    if len(recommended) < 10:
+        preferred_genres = set()
+        for item in recent_history:
+            for genre in item.title.genres.all():
+                preferred_genres.add(genre.id)
+
+        user_favorites = Favorite.objects.filter(user=request.user).select_related('title').prefetch_related(
+            'title__genres')
+        for fav in user_favorites:
+            for genre in fav.title.genres.all():
+                preferred_genres.add(genre.id)
+
+        pad_amount = 10 - len(recommended)
+        extra_titles = Title.objects.filter(
+            genres__in=preferred_genres
+        ).exclude(
+            id__in=watched_title_ids
+        ).exclude(
+            id__in=[t.id for t in recommended]
+        ).distinct().order_by('-rating_score')[:pad_amount]
+        recommended = list(recommended) + list(extra_titles)
+
     if len(recommended) < 10:
         pad_amount = 10 - len(recommended)
         extra_titles = Title.objects.exclude(
@@ -322,6 +361,7 @@ def recommendations(request):
             id__in=[t.id for t in recommended]
         ).order_by('-rating_score')[:pad_amount]
         recommended = list(recommended) + list(extra_titles)
+
     return Response(TitleSerializer(recommended, many=True).data)
 
 
