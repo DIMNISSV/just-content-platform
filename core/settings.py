@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'django_vite',
     'django.contrib.staticfiles',
     'rest_framework',
+    'django_celery_beat',
     'users.apps.UsersConfig',
     'media.apps.MediaConfig',
     'content.apps.ContentConfig',
@@ -100,9 +101,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CELERY_BROKER_URL = env('CELERY_BROKER_URL')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
+
 KODIK_API_TOKEN = env('KODIK_API_TOKEN', default='')
 KODIK_PLUGIN_ID = env.int('KODIK_PLUGIN_ID', default=1)
 KODIK_WEBHOOK_SECRET = env('KODIK_WEBHOOK_SECRET', default='')
+
+PLUGIN_STALE_MINUTES = env.int('PLUGIN_STALE_MINUTES', default=1440)
+
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
     'PAGE_SIZE': 20,
@@ -110,20 +115,11 @@ REST_FRAMEWORK = {
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'home'
 LOGOUT_REDIRECT_URL = 'home'
+
 CELERY_BEAT_SCHEDULE = {
     'verify-plugins-daily': {
         'task': 'aggregator.tasks.verify_plugin_registry',
         'schedule': crontab(hour=3, minute=22),
-    },
-    'sync-kodik-updates-hourly': {
-        'task': 'kodik_plugin.tasks.sync_kodik_updates_task',
-        'schedule': crontab(minute=13),
-        'kwargs': {'limit': 100},
-    },
-    'update-existing-series-daily': {
-        'task': 'kodik_plugin.tasks.update_existing_titles_task',
-        'schedule': crontab(hour=4, minute=7),
-        'kwargs': {'title_type': 'SERIES', 'delay': 0.5, 'stale_minutes': 60},
     },
 }
 
