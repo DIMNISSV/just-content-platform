@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 def reapply_taxonomy_to_titles():
     from content.models import Title, Genre
     from taxonomy.models import TaxonomyItem
+    from content.services.genre_helper import get_or_create_genre_safe
     logger.info("Starting background re-application of taxonomy to titles...")
     titles = Title.objects.prefetch_related('raw_terms').all().iterator(chunk_size=1000)
     processed_count = 0
@@ -33,7 +34,7 @@ def reapply_taxonomy_to_titles():
         if genre_tax_items:
             genre_objs = []
             for gt in genre_tax_items:
-                g_obj, _ = Genre.objects.get_or_create(slug=gt.slug, defaults={'name': gt.name})
+                g_obj = get_or_create_genre_safe(gt.slug, gt.name)
                 genre_objs.append(g_obj)
             title.genres.set(genre_objs)
         processed_count += 1

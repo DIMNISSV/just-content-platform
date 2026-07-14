@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 def _apply_taxonomy(title, raw_type: str, raw_genres: list):
     from taxonomy.models import RawTerm, TaxonomyItem
+    from content.services.genre_helper import get_or_create_genre_safe
     terms_to_add = []
     if raw_type:
         raw_type_clean = raw_type.strip().lower()
@@ -46,14 +47,13 @@ def _apply_taxonomy(title, raw_type: str, raw_genres: list):
         title.type = Title.Type.MOVIE
         type_updated = True
     if type_updated:
-        # Avoid webhook looping
         title._is_webhook_update = True
         title.save(update_fields=['type'])
     genre_tax_items = [t for t in tax_items if t.type == TaxonomyItem.TypeChoices.GENRE]
     if genre_tax_items:
         genre_objs = []
         for gt in genre_tax_items:
-            g_obj, _ = Genre.objects.get_or_create(slug=gt.slug, defaults={'name': gt.name})
+            g_obj = get_or_create_genre_safe(gt.slug, gt.name)
             genre_objs.append(g_obj)
         title.genres.set(genre_objs)
 
@@ -64,7 +64,6 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
         return {"error": "external_ids mapping is required"}, 400
 
     valid_id_fields = ['imdb_id', 'tmdb_id', 'kp_id', 'shiki_id', 'mal_id', 'mdl_id', 'wa_id']
-    # Поля, которые могут дробиться по сезонам. Мы будем их склеивать через запятую.
     split_id_fields = ['shiki_id', 'mal_id', 'mdl_id', 'wa_id']
 
     query = Q()
@@ -93,7 +92,7 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
             return {"error": "Title not found and no title_metadata provided"}, 400
 
         title = Title(
-            type=Title.Type.MOVIE,  # Default, will be updated by taxonomy
+            type=Title.Type.MOVIE,
             name=title_meta.get('name', 'Unknown'),
             original_name=title_meta.get('original_name', ''),
             description=title_meta.get('description', ''),
