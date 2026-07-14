@@ -13,12 +13,14 @@ class TaxonomyItemViewSet(viewsets.ModelViewSet):
     queryset = TaxonomyItem.objects.all()
     serializer_class = TaxonomyItemSerializer
     permission_classes = [IsAdminUser]
+    pagination_class = None
 
 
 class RawTermViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = RawTerm.objects.all()
     serializer_class = RawTermSerializer
     permission_classes = [IsAdminUser]
+    pagination_class = None
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -36,6 +38,7 @@ class RawTermMappingViewSet(viewsets.ModelViewSet):
     queryset = RawTermMapping.objects.all()
     serializer_class = RawTermMappingSerializer
     permission_classes = [IsAdminUser]
+    pagination_class = None
 
 
 @api_view(['POST'])

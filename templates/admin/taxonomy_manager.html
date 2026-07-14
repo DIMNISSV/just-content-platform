@@ -1,0 +1,34 @@
+{% extends "admin/base_site.html" %}
+{% load django_vite %}
+
+{% block title %}Taxonomy Manager | Just Content Admin{% endblock %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    {% vite_asset 'src/style.css' %}
+{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    {% vite_hmr_client %}
+    {% vite_asset 'src/main.js' %}
+{% endblock %}
+
+{% block breadcrumbs %}
+    <div class="breadcrumbs">
+        <a href="{% url 'admin:index' %}">Home</a>
+        &rsaquo; Taxonomy Manager
+    </div>
+{% endblock %}
+
+{% block content %}
+    <div id="content-main">
+        <div class="module">
+            <h2>Just Content: Taxonomy Mapping Manager</h2>
+            <p>Drag and drop raw terms from external plugins onto the normalized taxonomy tree to establish mapping
+                rules.</p>
+
+            <div id="vue-taxonomy-manager-mount" data-csrf="{{ csrf_token }}" class="mt-4"></div>
+        </div>
+    </div>
+{% endblock %}

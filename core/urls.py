@@ -4,9 +4,11 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 from content.views import HomeView, upload_wizard_view
+from taxonomy.admin_views import taxonomy_manager_view
 
 urlpatterns = [
     path('admin/upload-wizard/', upload_wizard_view, name='upload_wizard'),
+    path('admin/taxonomy-manager/', taxonomy_manager_view, name='taxonomy_manager'),
     path('admin/', admin.site.urls),
     path('', include('content.urls')),
     path('', include('media.urls')),

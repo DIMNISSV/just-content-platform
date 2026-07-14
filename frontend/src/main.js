@@ -11,6 +11,7 @@ import UploadWizard from './components/admin/UploadWizard.vue';
 import FavoriteButton from "./components/FavoriteButton.vue";
 import ProfileDashboard from "./components/ProfileDashboard.vue";
 import SimilarTitles from "./components/SimilarTitles.vue";
+import TaxonomyManager from "./components/admin/TaxonomyManager.vue";
 
 document.addEventListener('DOMContentLoaded', () => {
     const favoriteMounts = document.querySelectorAll('.vue-favorite-button');
@@ -21,24 +22,27 @@ document.addEventListener('DOMContentLoaded', () => {
             csrfToken: mount.dataset.csrf
         }).mount(mount);
     });
+
     const continueWatchingMount = document.getElementById('vue-continue-watching');
     if (continueWatchingMount) {
         createApp(ContinueWatching).mount('#vue-continue-watching');
     }
+
     const recommendationsMount = document.getElementById('vue-recommendations');
     if (recommendationsMount) {
         createApp(Recommendations).mount('#vue-recommendations');
     }
+
     const globalSearchMount = document.getElementById('vue-global-search');
     if (globalSearchMount) {
-        const app = createApp(GlobalSearch);
-        app.mount('#vue-global-search');
+        createApp(GlobalSearch).mount('#vue-global-search');
     }
+
     const catalogMount = document.getElementById('vue-catalog-mount');
     if (catalogMount) {
-        const app = createApp(Catalog);
-        app.mount('#vue-catalog-mount');
+        createApp(Catalog).mount('#vue-catalog-mount');
     }
+
     const titleRatingMount = document.getElementById('vue-title-rating');
     if (titleRatingMount) {
         createApp(TitleRating, {
@@ -47,9 +51,10 @@ document.addEventListener('DOMContentLoaded', () => {
             csrfToken: titleRatingMount.dataset.csrf
         }).mount('#vue-title-rating');
     }
+
     const playerMount = document.getElementById('vue-player-mount');
     if (playerMount) {
-        const app = createApp(VideoPlayer, {
+        createApp(VideoPlayer, {
             contentId: playerMount.dataset.contentId,
             contentType: playerMount.dataset.contentType,
             titleId: playerMount.dataset.titleId,
@@ -63,8 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
             preferredVoiceovers: playerMount.dataset.preferredVoiceovers,
             autoSkip: playerMount.dataset.autoSkip,
             csrfToken: playerMount.dataset.csrf
-        });
-        app.mount('#vue-player-mount');
+        }).mount('#vue-player-mount');
     }
 
     const similarTitlesMount = document.getElementById('vue-similar-titles');
@@ -83,19 +87,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const workbenchMount = document.getElementById('vue-workbench-mount');
     if (workbenchMount) {
-        const app = createApp(SyncWorkbench, {
+        createApp(SyncWorkbench, {
             objectId: workbenchMount.dataset.objectId,
             contentType: workbenchMount.dataset.contentType,
             csrfToken: workbenchMount.dataset.csrf
-        });
-        app.mount('#vue-workbench-mount');
+        }).mount('#vue-workbench-mount');
     }
 
     const uploadWizardMount = document.getElementById('vue-upload-wizard-mount');
     if (uploadWizardMount) {
-        const app = createApp(UploadWizard, {
+        createApp(UploadWizard, {
             csrfToken: uploadWizardMount.dataset.csrf
-        });
-        app.mount('#vue-upload-wizard-mount');
+        }).mount('#vue-upload-wizard-mount');
+    }
+
+    const taxonomyManagerMount = document.getElementById('vue-taxonomy-manager-mount');
+    if (taxonomyManagerMount) {
+        createApp(TaxonomyManager, {
+            csrfToken: taxonomyManagerMount.dataset.csrf
+        }).mount('#vue-taxonomy-manager-mount');
     }
 });
