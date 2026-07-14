@@ -22,9 +22,11 @@
     </div>
 
     <div v-else class="flex flex-wrap items-center gap-2 mb-2 bg-gray-900 p-2 rounded border border-gray-800">
-      <select v-model="node.field"
+      <select v-model="node.field" @change="onFieldChange"
               class="bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1.5 rounded outline-none focus:border-brand">
-        <option value="genre">Genre (Slug)</option>
+        <option value="genre">Genre</option>
+        <option value="tag">Tag</option>
+        <option value="category">Category</option>
         <option value="type">Type</option>
         <option value="release_year">Release Year</option>
         <option value="rating_score">Rating Score</option>
@@ -35,14 +37,12 @@
               class="bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1.5 rounded outline-none focus:border-brand">
         <option value="exact">Equals</option>
         <option value="icontains" v-if="node.field === 'name'">Contains</option>
-        <option value="gt" v-if="node.field !== 'genre' && node.field !== 'type' && node.field !== 'name'">Greater
-          Than
+        <option value="gt" v-if="!['genre', 'tag', 'category', 'type', 'name'].includes(node.field)">Greater Than
         </option>
-        <option value="lt" v-if="node.field !== 'genre' && node.field !== 'type' && node.field !== 'name'">Less Than
-        </option>
+        <option value="lt" v-if="!['genre', 'tag', 'category', 'type', 'name'].includes(node.field)">Less Than</option>
       </select>
 
-      <input v-if="node.field !== 'type' && node.field !== 'genre'" type="text" v-model="node.value"
+      <input v-if="!['genre', 'tag', 'category', 'type'].includes(node.field)" type="text" v-model="node.value"
              class="bg-gray-800 border border-gray-700 text-white text-xs px-3 py-1.5 rounded outline-none focus:border-brand"
              placeholder="Value">
 
@@ -52,9 +52,9 @@
         <option value="SERIES">Series</option>
       </select>
 
-      <select v-if="node.field === 'genre'" v-model="node.value"
+      <select v-if="['genre', 'tag', 'category'].includes(node.field)" v-model="node.value"
               class="bg-gray-800 border border-gray-700 text-white text-xs px-3 py-1.5 rounded outline-none focus:border-brand">
-        <option v-for="g in genres" :key="g.slug" :value="g.slug">{{ g.name }}</option>
+        <option v-for="t in filteredTaxonomy" :key="t.slug" :value="t.slug">{{ t.name }}</option>
       </select>
 
       <button @click="$emit('remove')" class="text-xs text-brand hover:text-red-400 px-2 transition ml-auto">
@@ -68,7 +68,7 @@
           :key="index"
           :node="child"
           :isRemovable="true"
-          :genres="genres"
+          :taxonomyItems="taxonomyItems"
           @remove="removeChild(index)"
       />
     </div>
@@ -87,7 +87,7 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
-  genres: {
+  taxonomyItems: {
     type: Array,
     default: () => []
   }
@@ -96,6 +96,17 @@ const props = defineProps({
 const emit = defineEmits(['remove']);
 
 const isLogical = computed(() => ['AND', 'OR', 'NOT'].includes(props.node.type));
+
+const filteredTaxonomy = computed(() => {
+  if (props.node.field === 'genre') return props.taxonomyItems.filter(i => i.type === 'GENRE');
+  if (props.node.field === 'tag') return props.taxonomyItems.filter(i => i.type === 'TAG');
+  if (props.node.field === 'category') return props.taxonomyItems.filter(i => i.type === 'CATEGORY');
+  return [];
+});
+
+const onFieldChange = () => {
+  props.node.value = '';
+};
 
 const addRule = () => {
   if (!props.node.children) props.node.children = [];

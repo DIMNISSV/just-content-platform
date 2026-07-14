@@ -16,6 +16,18 @@
           </div>
         </div>
         <h3 class="text-xs font-semibold truncate text-gray-200 group-hover:text-white">{{ title.name }}</h3>
+
+        <div class="flex flex-wrap gap-1 mt-1.5 h-4 overflow-hidden">
+          <span v-for="t in (title.taxonomy_items || []).filter(i => i.type !== 'TYPE').slice(0, 3)" :key="t.id"
+                class="text-[9px] uppercase font-bold border border-gray-700 px-1 rounded truncate max-w-[80px]"
+                :class="{
+                  'text-blue-400': t.type === 'GENRE',
+                  'text-green-400': t.type === 'TAG',
+                  'text-purple-400': t.type === 'CATEGORY'
+                }">
+            {{ t.name }}
+          </span>
+        </div>
       </a>
     </div>
   </div>

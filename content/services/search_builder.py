@@ -16,9 +16,8 @@ def parse_ast_to_q(node: dict) -> Q:
         if not field or value is None or value == '':
             return Q()
 
-        if field == 'genre':
+        if field in ['genre', 'tag', 'category', 'taxonomy_item']:
             Title = apps.get_model('content', 'Title')
-            # Фильтрация теперь опирается исключительно на нормализованные taxonomy_items
             return Q(id__in=Title.objects.filter(taxonomy_items__slug=value).values('id'))
 
         field_mapping = {

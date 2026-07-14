@@ -13,7 +13,7 @@
     </div>
 
     <div class="overflow-x-auto pb-4">
-      <SearchNode :node="ast" :isRemovable="false" :genres="genres"/>
+      <SearchNode :node="ast" :isRemovable="false" :taxonomyItems="taxonomyItems"/>
     </div>
   </div>
 </template>
@@ -24,20 +24,20 @@ import SearchNode from './SearchNode.vue';
 
 const emit = defineEmits(['search']);
 
-const genres = ref([]);
+const taxonomyItems = ref([]);
 const ast = ref({
   type: 'AND',
   children: []
 });
 
-const loadGenres = async () => {
+const loadTaxonomy = async () => {
   try {
-    const response = await fetch('/api/v1/content/genres/');
+    const response = await fetch('/api/v1/taxonomy/items/');
     if (response.ok) {
-      genres.value = await response.json();
+      taxonomyItems.value = await response.json();
     }
   } catch (e) {
-    console.error("Failed to load genres", e);
+    console.error("Failed to load taxonomy items", e);
   }
 };
 
@@ -51,6 +51,6 @@ const applySearch = () => {
 };
 
 onMounted(() => {
-  loadGenres();
+  loadTaxonomy();
 });
 </script>
