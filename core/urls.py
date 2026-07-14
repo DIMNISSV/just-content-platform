@@ -11,10 +11,10 @@ urlpatterns = [
     path('', include('content.urls')),
     path('', include('media.urls')),
     path('', include('aggregator.urls')),
+    path('', include('taxonomy.urls')),
     path('', HomeView.as_view(), name='home'),
     path('', include('users.urls')),
 ]
 
-# Раздача медиа-файлов сервером Django (только для режима разработки)
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
