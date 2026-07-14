@@ -1,12 +1,7 @@
 from rest_framework import serializers
 
-from .models import Title, Episode, Genre, WatchHistory
-
-
-class GenreSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Genre
-        fields = ['id', 'name', 'slug']
+from .models import Title, Episode, WatchHistory
+from taxonomy.serializers import TaxonomyItemSerializer
 
 
 class EpisodeSerializer(serializers.ModelSerializer):
@@ -16,20 +11,27 @@ class EpisodeSerializer(serializers.ModelSerializer):
 
 
 class TitleSerializer(serializers.ModelSerializer):
-    genres = GenreSerializer(many=True, read_only=True)
+    genres = serializers.SerializerMethodField()
+    taxonomy_items = TaxonomyItemSerializer(many=True, read_only=True)
     is_favorite = serializers.SerializerMethodField()
 
     class Meta:
         model = Title
         fields = [
             'id', 'type', 'name', 'original_name', 'description',
-            'release_year', 'genres', 'imdb_id', 'tmdb_id',
+            'release_year', 'genres', 'taxonomy_items', 'imdb_id', 'tmdb_id',
             'poster', 'created_at', 'rating_score', 'is_favorite'
         ]
 
+    def get_genres(self, obj):
+        if hasattr(obj, 'taxonomy_items'):
+            return [
+                {"id": str(t.id), "name": t.name, "slug": t.slug}
+                for t in obj.taxonomy_items.all() if t.type == 'GENRE'
+            ]
+        return []
+
     def get_is_favorite(self, obj):
-        # Используем аннотацию из QuerySet (чтобы избежать N+1 проблемы)
-        # Если аннотации нет (например при единичном запросе без нее), падаем на обычный фильтр
         if hasattr(obj, 'is_favorite_annotation'):
             return obj.is_favorite_annotation
 
@@ -47,7 +49,6 @@ class TitleDetailSerializer(TitleSerializer):
 
 
 class WatchHistorySerializer(serializers.ModelSerializer):
-    # Nested serializer to quickly display title info in the UI (poster, name)
     title = TitleSerializer(read_only=True)
     episode = EpisodeSerializer(read_only=True)
 
