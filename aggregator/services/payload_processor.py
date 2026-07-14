@@ -14,22 +14,23 @@ def _apply_taxonomy(title, raw_type: str, raw_genres: list):
     from taxonomy.models import RawTerm, TaxonomyItem
     terms_to_add = []
     if raw_type:
+        raw_type_clean = raw_type.strip().lower()
         rt, _ = RawTerm.objects.get_or_create(
-            name__iexact=raw_type.strip(),
-            source_field='type',
-            defaults={'name': raw_type.strip()}
+            name=raw_type_clean,
+            source_field='type'
         )
         terms_to_add.append(rt)
+
     for g in raw_genres:
         if not g:
             continue
-        g_clean = g.strip()
+        g_clean = g.strip().lower()
         rt, _ = RawTerm.objects.get_or_create(
-            name__iexact=g_clean,
-            source_field='genre',
-            defaults={'name': g_clean}
+            name=g_clean,
+            source_field='genre'
         )
         terms_to_add.append(rt)
+
     if terms_to_add:
         title.raw_terms.add(*terms_to_add)
     all_raw_terms = title.raw_terms.all()

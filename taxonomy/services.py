@@ -50,16 +50,14 @@ def sync_taxonomy_presets() -> dict:
             obj.parent = item_objects[parent_slug]
             obj.save(update_fields=['parent'])
 
-    # Sync RawTerms and their Mappings
     for mapping in mappings_data:
-        raw_term_name = mapping['raw_term']
+        raw_term_name = mapping['raw_term'].strip().lower()
         source_field = mapping['source_field']
         maps_to_slugs = mapping.get('maps_to', [])
 
         raw_term, _ = RawTerm.objects.get_or_create(
-            name__iexact=raw_term_name,
-            source_field=source_field,
-            defaults={'name': raw_term_name}
+            name=raw_term_name,
+            source_field=source_field
         )
 
         for slug in maps_to_slugs:
