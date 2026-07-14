@@ -63,3 +63,45 @@ def update_existing_titles_task(title_type: str = 'SERIES', delay: float = 0.5, 
     except Exception as e:
         logger.exception("Fatal error occurred during background existing titles update.")
         return f"Failed: {str(e)}"
+
+
+@shared_task
+def refresh_single_title_task(title_id: str):
+    """
+    On-Demand refresh for a specific title directly through the Kodik API.
+    """
+    from content.models import Title
+
+    try:
+        title = Title.objects.get(id=title_id)
+    except Title.DoesNotExist:
+        return
+
+    token = getattr(settings, 'KODIK_API_TOKEN', '')
+    plugin_id = getattr(settings, 'KODIK_PLUGIN_ID', 1)
+    if not token:
+        return
+
+    search_kwargs = {}
+    if title.shiki_id:
+        search_kwargs['shikimori_id'] = title.shiki_id
+    elif title.kp_id:
+        search_kwargs['kinopoisk_id'] = title.kp_id
+    elif title.imdb_id:
+        search_kwargs['imdb_id'] = title.imdb_id
+    elif title.mdl_id:
+        search_kwargs['mdl_id'] = title.mdl_id
+    else:
+        return
+
+    client = KodikListClient(token=token)
+    adapter = LocalServiceAdapter(plugin_id=plugin_id)
+    orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
+
+    try:
+        data = client.get_page(use_search=True, **search_kwargs)
+        results = data.get('results', [])
+        for item in results:
+            orchestrator._process_item(item)
+    except Exception as e:
+        logger.error(f"Error during single title refresh for {title_id}: {e}")
