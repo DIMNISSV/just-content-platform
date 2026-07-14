@@ -83,14 +83,15 @@ def refresh_single_title_task(title_id: str):
         return
 
     search_kwargs = {}
-    if title.shiki_id:
-        search_kwargs['shikimori_id'] = title.shiki_id
-    elif title.kp_id:
+
+    if title.kp_id:
         search_kwargs['kinopoisk_id'] = title.kp_id
     elif title.imdb_id:
         search_kwargs['imdb_id'] = title.imdb_id
     elif title.mdl_id:
         search_kwargs['mdl_id'] = title.mdl_id
+    elif title.shiki_id:
+        search_kwargs['shikimori_id'] = title.shiki_id
     else:
         return
 

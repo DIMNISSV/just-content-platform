@@ -8,8 +8,8 @@ from django.utils import timezone
 
 from content.models import Title
 from kodik_plugin.adapters.base import BaseJCPAdapter
-from kodik_plugin.client.list_api import KodikListClient
 from kodik_plugin.client.dump_api import KodikDumpClient
+from kodik_plugin.client.list_api import KodikListClient
 from kodik_plugin.mapper.episode_mapper import map_kodik_item_to_jcp_payloads
 from kodik_plugin.models import KodikSyncState
 
@@ -50,14 +50,14 @@ class KodikSyncOrchestrator:
 
         for title in titles:
             search_kwargs = {}
-            if title.shiki_id:
-                search_kwargs['shikimori_id'] = title.shiki_id
-            elif title.kp_id:
+            if title.kp_id:
                 search_kwargs['kinopoisk_id'] = title.kp_id
             elif title.imdb_id:
                 search_kwargs['imdb_id'] = title.imdb_id
             elif title.mdl_id:
                 search_kwargs['mdl_id'] = title.mdl_id
+            elif title.shiki_id:
+                search_kwargs['shikimori_id'] = title.shiki_id
             else:
                 continue
 
