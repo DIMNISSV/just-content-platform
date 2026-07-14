@@ -30,7 +30,8 @@ INSTALLED_APPS = [
     'media.apps.MediaConfig',
     'content.apps.ContentConfig',
     'aggregator.apps.AggregatorConfig',
-    'kodik_plugin.apps.KodikPluginConfig'
+    'kodik_plugin.apps.KodikPluginConfig',
+    'taxonomy.apps.TaxonomyConfig',
 ]
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
