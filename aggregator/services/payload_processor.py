@@ -2,7 +2,6 @@ import logging
 
 from django.core.cache import cache
 from django.db.models import Q
-from django.utils.text import slugify
 
 from aggregator.models import ExternalContentRegistry
 from content.models import Title, Episode, Genre
@@ -11,36 +10,73 @@ from content.tasks import download_and_save_poster
 logger = logging.getLogger(__name__)
 
 
+def _apply_taxonomy(title, raw_type: str, raw_genres: list):
+    from taxonomy.models import RawTerm, TaxonomyItem
+    terms_to_add = []
+    if raw_type:
+        rt, _ = RawTerm.objects.get_or_create(
+            name__iexact=raw_type.strip(),
+            source_field='type',
+            defaults={'name': raw_type.strip()}
+        )
+        terms_to_add.append(rt)
+    for g in raw_genres:
+        if not g:
+            continue
+        g_clean = g.strip()
+        rt, _ = RawTerm.objects.get_or_create(
+            name__iexact=g_clean,
+            source_field='genre',
+            defaults={'name': g_clean}
+        )
+        terms_to_add.append(rt)
+    if terms_to_add:
+        title.raw_terms.add(*terms_to_add)
+    all_raw_terms = title.raw_terms.all()
+    tax_items = list(TaxonomyItem.objects.filter(raw_mappings__raw_term__in=all_raw_terms).distinct())
+    title.taxonomy_items.set(tax_items)
+    type_updated = False
+    has_series = any(t.slug == 'type-series' for t in tax_items)
+    has_movie = any(t.slug == 'type-movie' for t in tax_items)
+    if has_series and title.type != Title.Type.SERIES:
+        title.type = Title.Type.SERIES
+        type_updated = True
+    elif has_movie and not has_series and title.type != Title.Type.MOVIE:
+        title.type = Title.Type.MOVIE
+        type_updated = True
+    if type_updated:
+        # Avoid webhook looping
+        title._is_webhook_update = True
+        title.save(update_fields=['type'])
+    genre_tax_items = [t for t in tax_items if t.type == TaxonomyItem.TypeChoices.GENRE]
+    if genre_tax_items:
+        genre_objs = []
+        for gt in genre_tax_items:
+            g_obj, _ = Genre.objects.get_or_create(slug=gt.slug, defaults={'name': gt.name})
+            genre_objs.append(g_obj)
+        title.genres.set(genre_objs)
+
+
 def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
-    """
-    Бизнес-логика обработки входящего payload от плагина интеграции.
-    Создает/обновляет тайтлы, эпизоды и записи в реестре внешнего контента.
-    Возвращает кортеж (response_dict, http_status_code).
-    """
     external_ids = data.get('external_ids', {})
     if not external_ids:
         return {"error": "external_ids mapping is required"}, 400
-
     valid_id_fields = ['imdb_id', 'tmdb_id', 'kp_id', 'shiki_id', 'mal_id', 'mdl_id', 'wa_id']
     query = Q()
     for key, val in external_ids.items():
         if key in valid_id_fields and val:
             query |= Q(**{key: val})
-
     if not query:
         return {"error": "No valid external ID fields provided"}, 400
-
     title = Title.objects.filter(query).first()
     title_meta = data.get('title_metadata')
-
     if not title:
         if not plugin.allow_title_creation:
             return {"error": "Title not found and creation is disabled"}, 404
         if not title_meta:
             return {"error": "Title not found and no title_metadata provided"}, 400
-
         title = Title(
-            type=title_meta.get('type', Title.Type.MOVIE),
+            type=Title.Type.MOVIE,  # Default, will be updated by taxonomy
             name=title_meta.get('name', 'Unknown'),
             original_name=title_meta.get('original_name', ''),
             description=title_meta.get('description', ''),
@@ -50,19 +86,9 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
         for k, v in external_ids.items():
             if k in valid_id_fields and v:
                 setattr(title, k, str(v))
-
         title._is_webhook_update = True
         title.save()
-
-        genres_data = title_meta.get('genres')
-        if genres_data:
-            genre_objs = []
-            for g_name in genres_data:
-                slug = slugify(g_name, allow_unicode=True)
-                g_obj, _ = Genre.objects.get_or_create(slug=slug, defaults={'name': g_name})
-                genre_objs.append(g_obj)
-            title.genres.set(genre_objs)
-
+        _apply_taxonomy(title, title_meta.get('raw_type'), title_meta.get('raw_genres', []))
         poster_url = title_meta.get('poster_url')
         if poster_url:
             cache_key = f"poster_download_queued_{title.id}"
@@ -91,28 +117,16 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
             try_update('original_name', title_meta.get('original_name'))
             try_update('description', title_meta.get('description'))
             try_update('release_year', title_meta.get('release_year'))
-            try_update('type', title_meta.get('type'))
-
             for k, v in external_ids.items():
                 if k in valid_id_fields and v and not getattr(title, k):
                     setattr(title, k, str(v))
                     updated = True
-
             if updated:
                 title.metadata_priority_level = max(curr_prio, prio)
                 title._is_webhook_update = True
                 title.save()
-
-            genres_data = title_meta.get('genres')
-            if genres_data is not None:
-                if not title.genres.exists() or prio >= curr_prio:
-                    genre_objs = []
-                    for g_name in genres_data:
-                        slug = slugify(g_name, allow_unicode=True)
-                        g_obj, _ = Genre.objects.get_or_create(slug=slug, defaults={'name': g_name})
-                        genre_objs.append(g_obj)
-                    title.genres.set(genre_objs)
-
+            if prio >= curr_prio:
+                _apply_taxonomy(title, title_meta.get('raw_type'), title_meta.get('raw_genres', []))
             poster_url = title_meta.get('poster_url')
             if poster_url:
                 if not title.poster or title.poster_url != poster_url:
@@ -120,7 +134,6 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
                     if cache.get(cache_key) != poster_url:
                         cache.set(cache_key, poster_url, timeout=300)
                         download_and_save_poster.delay(title.id, poster_url)
-
     episodes_meta = data.get('episodes_metadata', [])
     if title.type == Title.Type.SERIES and episodes_meta:
         for ep_data in episodes_meta:
@@ -128,7 +141,6 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
             e_num = ep_data.get('episode_number')
             if s_num is None or e_num is None:
                 continue
-
             ep = Episode.objects.filter(title=title, season_number=s_num, episode_number=e_num).first()
             if not ep:
                 if plugin.allow_title_creation:
@@ -147,7 +159,6 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
                     ep_updated = False
                     prio = plugin.metadata_priority
                     curr_prio = ep.metadata_priority_level
-
                     ep_name = ep_data.get('name')
                     if ep_name:
                         if not ep.name:
@@ -156,7 +167,6 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
                         elif prio >= curr_prio and ep.name != ep_name:
                             ep.name = ep_name
                             ep_updated = True
-
                     ep_desc = ep_data.get('description')
                     if ep_desc:
                         if not ep.description:
@@ -165,12 +175,10 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
                         elif prio >= curr_prio and ep.description != ep_desc:
                             ep.description = ep_desc
                             ep_updated = True
-
                     if ep_updated:
                         ep.metadata_priority_level = max(curr_prio, prio)
                         ep._is_webhook_update = True
                         ep.save()
-
     episode = None
     season_num = data.get('season_number')
     episode_num = data.get('episode_number')
@@ -188,14 +196,11 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
                 episode.save()
             else:
                 return {"error": "Matching episode not found and creation disabled"}, 404
-
     content_type = data.get('content_type')
     target_asset_uuid = data.get('target_asset_uuid')
     fetch_url = data.get('fetch_url')
-
     if not content_type or not fetch_url:
         return {"error": "content_type and fetch_url are required"}, 400
-
     try:
         registry_entry, created = ExternalContentRegistry.objects.update_or_create(
             plugin=plugin,

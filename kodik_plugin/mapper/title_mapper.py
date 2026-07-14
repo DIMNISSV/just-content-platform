@@ -5,6 +5,7 @@ def extract_title_metadata(item: dict) -> dict:
     """
     Extracts normalized JCP title metadata from a Kodik API item.
     Supports data merging from KinoPoisk, Shikimori, and MyDramaList fields.
+    Also forwards the raw taxonomy fields (type and genres) for universal mapping.
     """
     mat_data = item.get('material_data', {})
 
@@ -13,15 +14,18 @@ def extract_title_metadata(item: dict) -> dict:
     year = mat_data.get('year') or item.get('year')
     description = mat_data.get('description') or mat_data.get('anime_description', '')
     poster_url = mat_data.get('poster_url') or mat_data.get('anime_poster_url') or mat_data.get('drama_poster_url', '')
-    genres = mat_data.get('all_genres') or mat_data.get('genres') or mat_data.get('anime_genres', [])
+
+    raw_type = item.get('type', '')
+    raw_genres = mat_data.get('all_genres') or mat_data.get('genres') or mat_data.get('anime_genres', [])
 
     return {
-        "type": map_content_type(item.get('type', '')),
+        "type": map_content_type(raw_type),
+        "raw_type": raw_type,
         "name": name,
         "original_name": orig_name,
         "description": description,
         "release_year": int(year) if year else None,
-        "genres": genres,
+        "raw_genres": raw_genres,
         "poster_url": poster_url
     }
 
