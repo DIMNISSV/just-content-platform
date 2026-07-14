@@ -9,6 +9,7 @@ from django.utils.module_loading import import_string
 
 from content.models import Title
 from .models import PluginProvider, ExternalContentRegistry
+from .services.lock_manager import acquire_refresh_lock, release_refresh_lock, is_refresh_locked
 
 logger = logging.getLogger(__name__)
 
@@ -75,53 +76,78 @@ def trigger_title_refresh_task(title_id: str):
     Issues a fan-out request to all active plugins advising them to update data
     for the specified title if it is deemed stale.
     """
-    try:
-        title = Title.objects.get(id=title_id)
-    except Title.DoesNotExist:
+    if not acquire_refresh_lock(title_id, expire_seconds=900):
+        logger.info(f"Skipping refresh task: Lock already active for Title {title_id}")
         return
 
+    try:
+        try:
+            title = Title.objects.get(id=title_id)
+        except Title.DoesNotExist:
+            return
+
+        stale_minutes = getattr(settings, 'PLUGIN_STALE_MINUTES', 1440)
+        stale_threshold = timezone.now() - timedelta(minutes=stale_minutes)
+
+        if title.updated_at >= stale_threshold:
+            return
+
+        plugins = PluginProvider.objects.filter(is_active=True)
+        if not plugins.exists():
+            return
+
+        payload = {
+            "external_ids": {
+                "kp_id": title.kp_id,
+                "imdb_id": title.imdb_id,
+                "shiki_id": title.shiki_id,
+                "mdl_id": title.mdl_id
+            },
+            "title_metadata": {
+                "name": title.name,
+                "original_name": title.original_name,
+                "release_year": title.release_year,
+                "type": title.type
+            }
+        }
+
+        for plugin in plugins:
+            if plugin.is_local:
+                if plugin.app_label:
+                    try:
+                        provider_cls = import_string(f"{plugin.app_label}.provider.PluginProvider")
+                        provider = provider_cls()
+                        provider.refresh_title(title_id)
+                    except Exception as e:
+                        logger.error(f"Failed to trigger local refresh for {plugin.app_label}: {e}")
+            else:
+                if plugin.endpoint_url:
+                    base_path = plugin.endpoint_url.rsplit('/', 1)[0]
+                    refresh_url = f"{base_path}/refresh"
+                    headers = {"Content-Type": "application/json"}
+                    if plugin.api_token:
+                        headers["Authorization"] = f"Bearer {plugin.api_token}"
+                    try:
+                        requests.post(refresh_url, json=payload, headers=headers, timeout=5)
+                    except requests.RequestException as e:
+                        logger.error(f"Failed to trigger remote refresh for {plugin.name} at {refresh_url}: {e}")
+    finally:
+        release_refresh_lock(title_id)
+
+
+def enqueue_title_refresh(title: Title) -> None:
+    """
+    Safely dispatches a background title refresh task if the metadata is stale
+    and there is no active lock preventing execution.
+    """
     stale_minutes = getattr(settings, 'PLUGIN_STALE_MINUTES', 1440)
     stale_threshold = timezone.now() - timedelta(minutes=stale_minutes)
 
     if title.updated_at >= stale_threshold:
         return
 
-    plugins = PluginProvider.objects.filter(is_active=True)
-    if not plugins.exists():
+    title_id_str = str(title.id)
+    if is_refresh_locked(title_id_str):
         return
 
-    payload = {
-        "external_ids": {
-            "kp_id": title.kp_id,
-            "imdb_id": title.imdb_id,
-            "shiki_id": title.shiki_id,
-            "mdl_id": title.mdl_id
-        },
-        "title_metadata": {
-            "name": title.name,
-            "original_name": title.original_name,
-            "release_year": title.release_year,
-            "type": title.type
-        }
-    }
-
-    for plugin in plugins:
-        if plugin.is_local:
-            if plugin.app_label:
-                try:
-                    provider_cls = import_string(f"{plugin.app_label}.provider.PluginProvider")
-                    provider = provider_cls()
-                    provider.refresh_title(title_id)
-                except Exception as e:
-                    logger.error(f"Failed to trigger local refresh for {plugin.app_label}: {e}")
-        else:
-            if plugin.endpoint_url:
-                base_path = plugin.endpoint_url.rsplit('/', 1)[0]
-                refresh_url = f"{base_path}/refresh"
-                headers = {"Content-Type": "application/json"}
-                if plugin.api_token:
-                    headers["Authorization"] = f"Bearer {plugin.api_token}"
-                try:
-                    requests.post(refresh_url, json=payload, headers=headers, timeout=5)
-                except requests.RequestException as e:
-                    logger.error(f"Failed to trigger remote refresh for {plugin.name} at {refresh_url}: {e}")
+    trigger_title_refresh_task.delay(title_id_str)
