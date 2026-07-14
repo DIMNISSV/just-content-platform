@@ -3,7 +3,14 @@ from django.db import models
 
 class PluginProvider(models.Model):
     name = models.CharField(max_length=100, help_text="Название донора (напр. Kodik, Collaps)")
-    endpoint_url = models.URLField(help_text="URL эндпоинта плагина")
+    endpoint_url = models.URLField(blank=True, null=True, help_text="URL эндпоинта плагина (если удаленный)")
+    is_local = models.BooleanField(default=False, help_text="Выполняется ли этот плагин локально внутри JCP?")
+    app_label = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Имя Django-приложения локального плагина (напр. 'kodik_plugin')"
+    )
     api_token = models.CharField(max_length=255, blank=True, help_text="Токен авторизации (если нужен)")
     is_active = models.BooleanField(default=True, help_text="Включен ли опрос этого плагина")
     timeout = models.IntegerField(default=3, help_text="Таймаут ожидания ответа в секундах")
@@ -32,7 +39,8 @@ class PluginProvider(models.Model):
 
     def __str__(self):
         status = "✅" if self.is_active else "❌"
-        return f"{status} {self.name}"
+        location = "L" if self.is_local else "R"
+        return f"{status} [{location}] {self.name}"
 
 
 class ExternalContentRegistry(models.Model):
