@@ -18,8 +18,8 @@ def migrate_data(apps, schema_editor):
         defaults={'name': 'Series', 'type': 'TYPE'}
     )
 
-    raw_movie, _ = RawTerm.objects.get_or_create(name='MOVIE', source_field='type')
-    raw_series, _ = RawTerm.objects.get_or_create(name='SERIES', source_field='type')
+    raw_movie, _ = RawTerm.objects.get_or_create(name='movie', source_field='type')
+    raw_series, _ = RawTerm.objects.get_or_create(name='series', source_field='type')
 
     RawTermMapping.objects.get_or_create(raw_term=raw_movie, taxonomy_item=movie_type)
     RawTermMapping.objects.get_or_create(raw_term=raw_series, taxonomy_item=series_type)
@@ -27,7 +27,7 @@ def migrate_data(apps, schema_editor):
     genres = list(Genre.objects.all())
 
     existing_tax_items = {t.slug: t for t in TaxonomyItem.objects.filter(type='GENRE')}
-    existing_raw_terms = {r.name: r for r in RawTerm.objects.filter(source_field='genre')}
+    existing_raw_terms = {r.name.strip().lower(): r for r in RawTerm.objects.filter(source_field='genre')}
 
     new_tax_items = []
     new_raw_terms = []
@@ -40,11 +40,15 @@ def migrate_data(apps, schema_editor):
                 name=genre.name,
                 type='GENRE'
             ))
-        if genre.name not in existing_raw_terms:
+            existing_tax_items[genre.slug] = True
+
+        genre_name_lower = genre.name.strip().lower()
+        if genre_name_lower not in existing_raw_terms:
             new_raw_terms.append(RawTerm(
-                name=genre.name,
+                name=genre_name_lower,
                 source_field='genre'
             ))
+            existing_raw_terms[genre_name_lower] = True
 
     if new_tax_items:
         TaxonomyItem.objects.bulk_create(new_tax_items, ignore_conflicts=True)
@@ -52,7 +56,7 @@ def migrate_data(apps, schema_editor):
         RawTerm.objects.bulk_create(new_raw_terms, ignore_conflicts=True)
 
     tax_items_by_slug = {t.slug: t for t in TaxonomyItem.objects.filter(type='GENRE')}
-    raw_terms_by_name = {r.name: r for r in RawTerm.objects.filter(source_field='genre')}
+    raw_terms_by_name = {r.name.strip().lower(): r for r in RawTerm.objects.filter(source_field='genre')}
 
     existing_mappings = set(RawTermMapping.objects.values_list('raw_term_id', 'taxonomy_item_id'))
     new_mappings = []
@@ -60,7 +64,7 @@ def migrate_data(apps, schema_editor):
 
     for genre in genres:
         tax_item = tax_items_by_slug.get(genre.slug)
-        raw_term = raw_terms_by_name.get(genre.name)
+        raw_term = raw_terms_by_name.get(genre.name.strip().lower())
 
         if tax_item:
             genre_id_to_tax_id[genre.id] = tax_item.id
