@@ -34,7 +34,9 @@ class KodikBaseClient:
                 **kwargs
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            logger.debug(result)
+            return result
         except requests.RequestException as e:
             logger.error(f"Kodik API network error: {str(e)}")
             raise
