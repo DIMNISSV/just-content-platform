@@ -12,6 +12,7 @@ from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser, AllowAny
 from rest_framework.response import Response
 
+from aggregator.tasks import trigger_title_refresh_task
 from media.models import Asset, RawMediaFile, AssetVariant, TranscodingPreset
 from media.tasks import extract_stream_task
 from users.models import UserPreference
@@ -383,6 +384,9 @@ class WatchView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+
+        trigger_title_refresh_task.delay(str(self.object.id))
+
         context['content_type'] = 'title'
         context['player_id'] = self.object.id
         context['title_id'] = self.object.id
@@ -466,6 +470,9 @@ class EpisodeWatchView(DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         title = self.object.title
+
+        trigger_title_refresh_task.delay(str(title.id))
+
         context['title'] = title
         context['content_type'] = 'episode'
         context['player_id'] = self.object.id
