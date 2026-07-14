@@ -15,18 +15,18 @@ from rest_framework.response import Response
 from aggregator.tasks import enqueue_title_refresh
 from media.models import Asset, RawMediaFile, AssetVariant, TranscodingPreset
 from media.tasks import extract_stream_task
+from taxonomy.models import TaxonomyItem
+from taxonomy.serializers import TaxonomyItemSerializer
 from users.models import UserPreference
-from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack, Genre, \
-    Favorite
-from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, GenreSerializer, \
-    EpisodeSerializer
+from .models import Title, Episode, TrackGroupRating, TitleRating, WatchHistory, TrackGroup, AdditionalTrack, Favorite
+from .serializers import TitleSerializer, TitleDetailSerializer, WatchHistorySerializer, EpisodeSerializer
 from .services.search_builder import parse_ast_to_q
 
 logger = logging.getLogger(__name__)
 
 
 class TitleViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Title.objects.prefetch_related('genres').all().order_by('-created_at')
+    queryset = Title.objects.all().order_by('-created_at')
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'original_name']
     ordering_fields = ['created_at', 'rating_score', 'release_year']
@@ -34,20 +34,37 @@ class TitleViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         from django.db.models import Exists, OuterRef
-        qs = super().get_queryset()
+        qs = super().get_queryset().prefetch_related('taxonomy_items')
         user = self.request.user
+
         if user.is_authenticated:
             favorite_subquery = Favorite.objects.filter(user=user, title=OuterRef('pk'))
             qs = qs.annotate(is_favorite_annotation=Exists(favorite_subquery))
         else:
             from django.db.models import Value
             qs = qs.annotate(is_favorite_annotation=Value(False))
+
         c_type = self.request.query_params.get('type')
         genre = self.request.query_params.get('genre')
+        tax_items = self.request.query_params.get('taxonomy_items')
+        tax_items_any = self.request.query_params.get('taxonomy_items_any')
+
         if c_type in [Title.Type.MOVIE, Title.Type.SERIES]:
             qs = qs.filter(type=c_type)
         if genre:
-            qs = qs.filter(genres__slug=genre)
+            qs = qs.filter(taxonomy_items__slug=genre)
+
+        # Множественная фильтрация (И)
+        if tax_items:
+            slugs = tax_items.split(',')
+            for slug in slugs:
+                qs = qs.filter(taxonomy_items__slug=slug.strip())
+
+        # Множественная фильтрация (ИЛИ)
+        if tax_items_any:
+            slugs = [s.strip() for s in tax_items_any.split(',')]
+            qs = qs.filter(taxonomy_items__slug__in=slugs).distinct()
+
         return qs
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticatedOrReadOnly])
@@ -79,8 +96,8 @@ class TitleViewSet(viewsets.ReadOnlyModelViewSet):
         ).exclude(pk=title.pk).filter(rank__gte=0.05).order_by('-rank')[:10]
 
         if not qs.exists():
-            genre_ids = title.genres.values_list('id', flat=True)
-            qs = self.get_queryset().filter(genres__in=genre_ids).exclude(pk=title.pk).distinct().order_by(
+            tax_ids = title.taxonomy_items.values_list('id', flat=True)
+            qs = self.get_queryset().filter(taxonomy_items__in=tax_ids).exclude(pk=title.pk).distinct().order_by(
                 '-rating_score')[:10]
 
         serializer = self.get_serializer(qs, many=True)
@@ -333,20 +350,20 @@ def recommendations(request):
     ).exclude(id__in=watched_title_ids).filter(rank__gte=0.05).order_by('-rank')[:10]
 
     if len(recommended) < 10:
-        preferred_genres = set()
+        preferred_tax_items = set()
         for item in recent_history:
-            for genre in item.title.genres.all():
-                preferred_genres.add(genre.id)
+            for t in item.title.taxonomy_items.all():
+                preferred_tax_items.add(t.id)
 
         user_favorites = Favorite.objects.filter(user=request.user).select_related('title').prefetch_related(
-            'title__genres')
+            'title__taxonomy_items')
         for fav in user_favorites:
-            for genre in fav.title.genres.all():
-                preferred_genres.add(genre.id)
+            for t in fav.title.taxonomy_items.all():
+                preferred_tax_items.add(t.id)
 
         pad_amount = 10 - len(recommended)
         extra_titles = Title.objects.filter(
-            genres__in=preferred_genres
+            taxonomy_items__in=preferred_tax_items
         ).exclude(
             id__in=watched_title_ids
         ).exclude(
@@ -381,6 +398,9 @@ class WatchView(DetailView):
     model = Title
     template_name = 'content/watch.html'
     context_object_name = 'title'
+
+    def get_queryset(self):
+        return super().get_queryset().prefetch_related('taxonomy_items')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -510,8 +530,12 @@ class EpisodeWatchView(DetailView):
 
 
 class GenreViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Genre.objects.all().order_by('name')
-    serializer_class = GenreSerializer
+    """
+    Эндпоинт, который отдает TaxonomyItem с типом GENRE,
+    тем самым сохраняя обратную совместимость с фронтендом, запрашивающим /genres/.
+    """
+    queryset = TaxonomyItem.objects.filter(type=TaxonomyItem.TypeChoices.GENRE).order_by('name')
+    serializer_class = TaxonomyItemSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
     pagination_class = None
 

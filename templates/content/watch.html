@@ -48,9 +48,12 @@
                 </div>
                 <p class="text-gray-400 text-lg mb-4">{{ title.original_name }} ({{ title.release_year }})</p>
 
-                <div class="flex gap-2 mb-6">
-                    {% for genre in title.genres.all %}
-                        <span class="bg-gray-800 px-3 py-1 rounded-full text-xs">{{ genre.name }}</span>
+                <div class="flex gap-2 mb-6 flex-wrap">
+                    {% for item in title.taxonomy_items.all %}
+                        {% if item.type != 'TYPE' %}
+                            <span class="bg-gray-800 px-3 py-1 rounded-full text-xs"
+                                  title="{{ item.get_type_display }}">{{ item.name }}</span>
+                        {% endif %}
                     {% endfor %}
                 </div>
 

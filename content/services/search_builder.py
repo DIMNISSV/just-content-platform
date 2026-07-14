@@ -18,7 +18,8 @@ def parse_ast_to_q(node: dict) -> Q:
 
         if field == 'genre':
             Title = apps.get_model('content', 'Title')
-            return Q(id__in=Title.objects.filter(genres__slug=value).values('id'))
+            # Фильтрация теперь опирается исключительно на нормализованные taxonomy_items
+            return Q(id__in=Title.objects.filter(taxonomy_items__slug=value).values('id'))
 
         field_mapping = {
             'type': 'type',
