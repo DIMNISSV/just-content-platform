@@ -27,6 +27,7 @@ class Title(models.Model):
     description = models.TextField(blank=True)
     release_year = models.IntegerField(null=True, blank=True)
     genres = models.ManyToManyField('Genre', blank=True)
+    taxonomy_items = models.ManyToManyField('taxonomy.TaxonomyItem', blank=True)
     imdb_id = models.CharField(max_length=100, blank=True)
     tmdb_id = models.CharField(max_length=100, blank=True)
     kp_id = models.CharField(max_length=100, blank=True)
