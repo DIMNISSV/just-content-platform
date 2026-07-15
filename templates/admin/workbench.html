@@ -1,7 +1,7 @@
 {% extends "admin/base_site.html" %}
 {% load django_vite %}
 
-{% block title %}Workbench: {{ title.name }} | Just Content Admin{% endblock %}
+{% block title %}Верстак: {{ title.name }} | Администрирование Just Content{% endblock %}
 
 {% block extrastyle %}
     {{ block.super }}
@@ -18,8 +18,9 @@
 {% block content %}
     <div id="content-main">
         <div class="module">
-            <h2>Content Workbench: {{ title.name }}</h2>
-            <p>Use this interactive tool to assemble Video and Audio assets into synchronized Track Groups.</p>
+            <h2>Верстак контента: {{ title.name }}</h2>
+            <p>Используйте этот интерактивный инструмент для сборки видео- и аудио-ассетов в синхронизированные группы
+                дорожек.</p>
 
             <!-- Vue Mount Point -->
             <!-- Передаем CSRF токен для API запросов -->

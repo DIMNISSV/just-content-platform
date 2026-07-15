@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Watching {{ title.name }} - Just Content{% endblock %}
+{% block title %}Просмотр {{ title.name }} - Just Content{% endblock %}
 
 {% block content %}
     <div class="container mx-auto px-4 py-8">
@@ -68,8 +68,8 @@
                     </div>
                 {% else %}
                     <div class="text-sm text-gray-500 bg-gray-900 p-4 rounded-lg inline-block">
-                        <a href="{% url 'login' %}" class="text-brand hover:underline font-bold">Sign In</a> to rate
-                        this title.
+                        <a href="{% url 'login' %}" class="text-brand hover:underline font-bold">Войдите</a>, чтобы
+                        оценить это произведение.
                     </div>
                 {% endif %}
             </div>
@@ -77,14 +77,14 @@
 
         {% if title.type == 'SERIES' %}
             <div class="mt-12 bg-card p-6 rounded-xl border border-gray-800">
-                <h2 class="text-2xl font-bold mb-4">Episodes</h2>
+                <h2 class="text-2xl font-bold mb-4">Серии</h2>
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                     {% for ep in title.episodes.all %}
                         <a href="{% url 'watch-episode' ep.id %}"
                            class="block p-4 rounded bg-gray-900 hover:bg-gray-800 border border-transparent hover:border-brand transition">
                             <div class="text-xs text-gray-500 uppercase font-bold">
-                                Season {{ ep.season_number }}</div>
-                            <div class="text-sm">E{{ ep.episode_number }}: {{ ep.name|default:"Episode " }}</div>
+                                Сезон {{ ep.season_number }}</div>
+                            <div class="text-sm">Э{{ ep.episode_number }}: {{ ep.name|default:"Серия " }}</div>
                         </a>
                     {% endfor %}
                 </div>

@@ -1,7 +1,7 @@
 {% extends "admin/base_site.html" %}
 {% load django_vite %}
 
-{% block title %}Taxonomy Manager | Just Content Admin{% endblock %}
+{% block title %}Менеджер таксономии | Администрирование Just Content{% endblock %}
 
 {% block extrastyle %}
     {{ block.super }}
@@ -16,17 +16,17 @@
 
 {% block breadcrumbs %}
     <div class="breadcrumbs">
-        <a href="{% url 'admin:index' %}">Home</a>
-        &rsaquo; Taxonomy Manager
+        <a href="{% url 'admin:index' %}">Главная</a>
+        &rsaquo; Менеджер таксономии
     </div>
 {% endblock %}
 
 {% block content %}
     <div id="content-main">
         <div class="module">
-            <h2>Just Content: Taxonomy Mapping Manager</h2>
-            <p>Drag and drop raw terms from external plugins onto the normalized taxonomy tree to establish mapping
-                rules.</p>
+            <h2>Just Content: Менеджер связей таксономии</h2>
+            <p>Перетаскивайте сырые термины из внешних плагинов на дерево нормализованной таксономии для настройки
+                правил связи.</p>
 
             <div id="vue-taxonomy-manager-mount" data-csrf="{{ csrf_token }}" class="mt-4"></div>
         </div>

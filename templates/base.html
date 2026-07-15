@@ -1,6 +1,6 @@
 {% load django_vite %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,8 +17,8 @@
     <div class="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
         <a href="/" class="text-brand text-2xl font-black tracking-tighter flex-shrink-0">JUST CONTENT</a>
         <nav class="hidden md:flex gap-6 flex-shrink-0">
-            <a href="/" class="hover:text-brand transition-colors">Home</a>
-            <a href="{% url 'catalog' %}" class="hover:text-brand transition-colors">Catalog</a>
+            <a href="/" class="hover:text-brand transition-colors">Главная</a>
+            <a href="{% url 'catalog' %}" class="hover:text-brand transition-colors">Каталог</a>
         </nav>
         <div id="vue-global-search" class="flex-grow max-w-md hidden sm:block ml-auto relative z-50"></div>
 
@@ -26,7 +26,7 @@
             {% if user.is_authenticated %}
                 <div class="hidden sm:flex flex-col items-end">
                     <span class="text-xs font-bold text-white">{{ user.email }}</span>
-                    <span class="text-[10px] text-brand uppercase font-black">Trust: {{ user.trust_score }}</span>
+                    <span class="text-[10px] text-brand uppercase font-black">Доверие: {{ user.trust_score }}</span>
                 </div>
                 <a href="{% url 'profile' %}"
                    class="w-10 h-10 bg-gray-800 rounded-full border border-gray-700 flex items-center justify-center font-black text-brand hover:border-brand transition">
@@ -34,13 +34,12 @@
                 </a>
                 <form action="{% url 'logout' %}" method="post" class="inline">
                     {% csrf_token %}
-                    <button type="submit" class="text-xs text-gray-500 hover:text-white transition">LOGOUT</button>
+                    <button type="submit" class="text-xs text-gray-500 hover:text-white transition">ВЫХОД</button>
                 </form>
             {% else %}
-                <a href="{% url 'login' %}" class="text-sm font-bold hover:text-brand transition">SIGN IN</a>
+                <a href="{% url 'login' %}" class="text-sm font-bold hover:text-brand transition">ВОЙТИ</a>
                 <a href="{% url 'register' %}"
-                   class="bg-brand text-white text-sm font-bold px-4 py-2 rounded hover:bg-red-700 transition">JOIN
-                    FREE</a>
+                   class="bg-brand text-white text-sm font-bold px-4 py-2 rounded hover:bg-red-700 transition">РЕГИСТРАЦИЯ</a>
             {% endif %}
         </div>
     </div>
@@ -54,7 +53,7 @@
 <!-- Footer -->
 <footer class="py-8 mt-12 border-t border-gray-800 text-center text-gray-500 text-sm">
     <div class="container mx-auto px-4">
-        &copy; 2026 Just Content Platform.
+        &copy; 2026 Платформа Just Content.
     </div>
 </footer>
 </body>
