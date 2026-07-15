@@ -2,15 +2,15 @@
   <div class="flex flex-col gap-6 font-sans text-gray-200">
     <div class="flex justify-between items-center bg-card p-4 rounded-lg border border-gray-800 shadow">
       <div>
-        <h3 class="text-xl font-bold text-white">Mapping Dashboard</h3>
-        <p class="text-xs text-gray-400 mt-1">Organize incoming terms dynamically.</p>
+        <h3 class="text-xl font-bold text-white">Панель сопоставления</h3>
+        <p class="text-xs text-gray-400 mt-1">Организуйте поступающие термины в режиме реального времени.</p>
       </div>
       <button
           @click="syncPresets"
           :disabled="isSyncing"
           class="bg-brand hover:bg-red-700 text-white font-bold py-2 px-4 rounded text-sm transition disabled:opacity-50"
       >
-        {{ isSyncing ? 'Syncing...' : 'Sync Presets' }}
+        {{ isSyncing ? 'Синхронизация...' : 'Синхронизировать пресеты' }}
       </button>
     </div>
 
@@ -18,17 +18,17 @@
       <!-- Left Panel: Unmapped Raw Terms -->
       <div class="col-span-1 bg-card rounded-lg border border-gray-800 flex flex-col overflow-hidden shadow">
         <div class="p-4 border-b border-gray-800 bg-gray-900 flex-shrink-0">
-          <h4 class="font-bold text-white mb-3">Unmapped Raw Terms ({{ filteredTerms.length }})</h4>
+          <h4 class="font-bold text-white mb-3">Несопоставленные термины ({{ filteredTerms.length }})</h4>
           <input
               v-model="searchQuery"
               type="text"
-              placeholder="Search raw terms..."
+              placeholder="Поиск сырых терминов..."
               class="w-full bg-black border border-gray-700 rounded p-2 text-sm text-white focus:border-brand outline-none transition"
           />
         </div>
         <div class="flex-grow overflow-y-auto p-4 space-y-2 custom-scrollbar">
           <div v-if="filteredTerms.length === 0" class="text-gray-500 text-sm text-center py-4">
-            No unmapped terms found.
+            Несопоставленные термины не найдены.
           </div>
           <div
               v-for="term in filteredTerms"
@@ -38,7 +38,7 @@
               class="bg-gray-800 p-3 rounded border border-gray-700 cursor-grab active:cursor-grabbing hover:border-brand transition group"
           >
             <div class="text-sm font-semibold text-white truncate">{{ term.name }}</div>
-            <div class="text-[10px] text-brand uppercase font-black tracking-widest mt-1">SOURCE: {{
+            <div class="text-[10px] text-brand uppercase font-black tracking-widest mt-1">ИСТОЧНИК: {{
                 term.source_field
               }}
             </div>
@@ -55,13 +55,17 @@
               @click="activeTab = tab"
               :class="['px-6 py-4 text-sm font-bold uppercase tracking-wider transition-colors border-b-2 whitespace-nowrap', activeTab === tab ? 'text-brand border-brand bg-gray-800' : 'text-gray-500 border-transparent hover:text-gray-300']"
           >
-            {{ tab }}
+            <template v-if="tab === 'GENRE'">Жанр</template>
+            <template v-else-if="tab === 'TAG'">Тег</template>
+            <template v-else-if="tab === 'TYPE'">Тип</template>
+            <template v-else-if="tab === 'CATEGORY'">Категория</template>
+            <template v-else>{{ tab }}</template>
           </button>
         </div>
 
         <div class="flex-grow overflow-y-auto p-4 custom-scrollbar">
           <div v-if="activeTree.length === 0" class="text-gray-500 text-sm text-center py-4">
-            No taxonomy items found for this category.
+            Элементы таксономии для этой категории не найдены.
           </div>
           <div class="space-y-2">
             <div
@@ -103,7 +107,7 @@
               </div>
               <div v-else
                    class="text-[10px] uppercase font-bold tracking-wider text-gray-600 mt-3 border border-dashed border-gray-700 inline-block px-2 py-1 rounded">
-                Drop raw terms here
+                Перетащите сырые термины сюда
               </div>
             </div>
           </div>
@@ -253,7 +257,7 @@ async function syncPresets() {
       await fetchAll();
     } else {
       const data = await res.json();
-      alert('Error syncing presets: ' + data.message);
+      alert('Ошибка при синхронизации пресетов: ' + data.message);
     }
   } catch (error) {
     console.error("Sync preset error:", error);

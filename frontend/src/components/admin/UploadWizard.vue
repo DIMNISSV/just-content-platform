@@ -47,6 +47,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (pollingInterval) clearInterval(pollingInterval);
 });
+
 const handleCreateEpisode = async (payload) => {
   try {
     const res = await fetch('/api/v1/content/episodes/', {
@@ -55,15 +56,14 @@ const handleCreateEpisode = async (payload) => {
       body: JSON.stringify(payload)
     });
     if (res.ok) await fetchData();
-    else alert("Failed to create episode. Check if S/E already exists.");
+    else alert("Не удалось создать серию. Проверьте, существует ли уже этот Сезон/Серия.");
   } catch (e) {
     console.error(e);
   }
 };
 
-// Обработка удаления версии
 const handleDeleteGroup = async (groupId) => {
-  if (!confirm("Are you sure? This will delete the version but keep the physical assets.")) return;
+  if (!confirm("Вы уверены? Это действие удалит версию, но сохранит физические файлы ассетов.")) return;
   try {
     const res = await fetch(`/api/v1/content/track-groups/${groupId}/`, {
       method: 'DELETE',
@@ -75,9 +75,8 @@ const handleDeleteGroup = async (groupId) => {
   }
 };
 
-// Обработка удаления (отвязки) аудио
 const handleDeleteTrack = async (linkId) => {
-  if (!confirm("Remove this audio track from version?")) return;
+  if (!confirm("Удалить эту аудиодорожку из версии?")) return;
   try {
     const res = await fetch(`/api/v1/content/additional-tracks/${linkId}/`, {
       method: 'DELETE',
@@ -89,7 +88,6 @@ const handleDeleteTrack = async (linkId) => {
   }
 };
 
-// Обработка загрузки файлов с ПК
 const handleUploadFiles = (files) => {
   files.forEach(file => {
     const uploadState = {name: file.name, progress: 0, status: 'uploading'};
@@ -124,13 +122,12 @@ const handleUploadFiles = (files) => {
   });
 };
 
-// Обработка броска файла на дерево
 const handleAssignDrop = (dropData) => {
   const file = rawFiles.value.find(f => f.id === dropData.fileId);
 
   if (!file) return;
   if (file.status !== 'READY') {
-    alert("This file is not ready for processing yet. Please wait for extraction.");
+    alert("Этот файл еще не готов для обработки. Пожалуйста, подождите завершения анализа.");
     return;
   }
 
@@ -166,11 +163,11 @@ const confirmStreamSelection = async (selectedStreams, groupAuthor) => {
     if (res.ok) await fetchData();
     else {
       const err = await res.json();
-      alert("Error: " + (err.error || "Failed to assign streams"));
+      alert("Ошибка: " + (err.error || "не удалось сопоставить потоки"));
     }
   } catch (err) {
     console.error(err);
-    alert("Network error occurred.");
+    alert("Произошла сетевая ошибка.");
   } finally {
     isLoading.value = false;
     selectedFileForModal.value = null;

@@ -39,8 +39,8 @@ const handleDragStart = (e, file) => {
   <div class="w-1/3 bg-gray-900 rounded-lg border border-gray-800 flex flex-col overflow-hidden">
     <div class="p-4 border-b border-gray-800 bg-black/20 flex flex-col gap-3">
       <div class="flex justify-between items-center">
-        <h3 class="font-bold uppercase text-xs tracking-widest text-gray-400">Raw Files</h3>
-        <span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded">{{ rawFiles.length }} Total</span>
+        <h3 class="font-bold uppercase text-xs tracking-widest text-gray-400">Сырые файлы</h3>
+        <span class="text-[10px] bg-gray-800 px-2 py-0.5 rounded">Всего: {{ rawFiles.length }}</span>
       </div>
 
       <!-- OS Drop Zone -->
@@ -53,7 +53,7 @@ const handleDragStart = (e, file) => {
           :class="isDraggingFile ? 'border-brand bg-brand/10' : 'border-gray-700 hover:border-gray-500 hover:bg-gray-800/50'"
       >
         <span
-            class="text-xs text-gray-400 font-bold block pointer-events-none">Drop video files here or click to browse</span>
+            class="text-xs text-gray-400 font-bold block pointer-events-none">Перетащите файлы сюда или нажмите для выбора</span>
         <input type="file" ref="fileInput" multiple accept="video/*, audio/*, .mkv" class="hidden"
                @change="handleFileInputChange">
       </div>
@@ -66,7 +66,7 @@ const handleDragStart = (e, file) => {
           <div class="flex justify-between text-[10px] font-bold text-gray-400 mb-1">
             <span class="truncate w-3/4">{{ up.name }}</span>
             <span :class="{'text-green-500': up.status==='done', 'text-red-500': up.status==='error'}">
-              {{ up.status === 'error' ? 'Failed' : up.progress + '%' }}
+              {{ up.status === 'error' ? 'Ошибка' : up.progress + '%' }}
             </span>
           </div>
           <div class="h-1.5 w-full bg-black rounded-full overflow-hidden">
@@ -85,7 +85,7 @@ const handleDragStart = (e, file) => {
 
         <div v-if="file.status !== 'READY'"
              class="absolute inset-0 bg-black/20 z-10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <span class="text-[9px] bg-black px-2 py-1 rounded text-white font-bold">WAIT FOR ANALYSIS</span>
+          <span class="text-[9px] bg-black px-2 py-1 rounded text-white font-bold">ОЖИДАНИЕ АНАЛИЗА</span>
         </div>
 
         <div class="text-sm font-medium truncate" :title="file.original_name">{{ file.original_name }}</div>
@@ -93,7 +93,11 @@ const handleDragStart = (e, file) => {
           <span class="text-[10px] text-gray-500 font-mono">{{ file.id.substring(0, 8) }}</span>
           <span class="text-[10px] uppercase font-bold flex items-center gap-1"
                 :class="{'text-green-500': file.status === 'READY', 'text-yellow-500': file.status === 'PENDING' || file.status === 'ANALYZING', 'text-red-500': file.status === 'ERROR'}">
-            {{ file.status }}
+            <template v-if="file.status === 'READY'">ГОТОВ</template>
+            <template v-else-if="file.status === 'PENDING'">В ОЖИДАНИИ</template>
+            <template v-else-if="file.status === 'ANALYZING'">АНАЛИЗ...</template>
+            <template v-else-if="file.status === 'ERROR'">ОШИБКА</template>
+            <template v-else>{{ file.status }}</template>
             <span v-if="file.status === 'ANALYZING' || file.status === 'PENDING'"
                   class="animate-spin w-3 h-3 border-2 border-yellow-500 border-t-transparent rounded-full inline-block"></span>
           </span>

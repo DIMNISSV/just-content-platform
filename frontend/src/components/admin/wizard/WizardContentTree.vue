@@ -38,9 +38,9 @@ const handleDrop = (e, targetId, dropType, targetType, targetName) => {
 };
 
 const promptCreateEpisode = (titleId) => {
-  const season = prompt("Season Number:", "1");
-  const number = prompt("Episode Number:", "1");
-  const name = prompt("Episode Name (Optional):", "");
+  const season = prompt("Номер сезона:", "1");
+  const number = prompt("Номер серии:", "1");
+  const name = prompt("Название серии (опционально):", "");
   if (season && number) {
     emit('create-episode', {title: titleId, season_number: parseInt(season), episode_number: parseInt(number), name});
   }
@@ -50,8 +50,8 @@ const promptCreateEpisode = (titleId) => {
 <template>
   <div class="w-2/3 bg-gray-900 rounded-lg border border-gray-800 flex flex-col overflow-hidden">
     <div class="p-4 border-b border-gray-800 bg-black/20 space-y-3">
-      <h3 class="font-bold uppercase text-xs tracking-widest text-gray-400">Content Library</h3>
-      <input v-model="searchQuery" type="text" placeholder="Search titles..."
+      <h3 class="font-bold uppercase text-xs tracking-widest text-gray-400">Библиотека контента</h3>
+      <input v-model="searchQuery" type="text" placeholder="Поиск произведений..."
              class="w-full bg-black border border-gray-700 rounded p-2 text-xs text-white focus:border-brand outline-none"/>
     </div>
 
@@ -67,19 +67,19 @@ const promptCreateEpisode = (titleId) => {
             </svg>
             <span class="font-bold text-lg">{{ title.name }}</span>
             <span class="text-[10px] uppercase border border-gray-700 px-1.5 rounded text-gray-500">{{
-                title.type
+                title.type === 'MOVIE' ? 'Фильм' : 'Сериал'
               }}</span>
           </div>
           <button v-if="title.type === 'SERIES'" @click.stop="promptCreateEpisode(title.id)"
                   class="opacity-0 group-hover/title:opacity-100 bg-gray-700 hover:bg-brand text-[10px] px-2 py-1 rounded font-bold transition-all">
-            + ADD EPISODE
+            + ДОБАВИТЬ СЕРИЮ
           </button>
         </div>
 
         <!-- Контент внутри Тайтла -->
         <div v-if="expandedTitles.has(title.id)" class="ml-6 mt-2 space-y-2 border-l-2 border-gray-800 pl-4">
 
-          <!-- ЕСЛИ ЭТО ФИЛЬМ: Выводим версии напрямую -->
+          <!-- ЕСЛИ ЭТО ФИЛЬМ -->
           <template v-if="title.type === 'MOVIE'">
             <div class="p-3 space-y-3 bg-gray-900/50 rounded-lg">
               <div v-for="group in title.track_groups" :key="group.id"
@@ -107,8 +107,8 @@ const promptCreateEpisode = (titleId) => {
                   <div v-for="asset in group.assets" :key="asset.id"
                        class="text-[10px] font-bold px-2 py-1 rounded border flex items-center gap-1.5"
                        :class="asset.type === 'VIDEO' ? 'bg-blue-900/30 text-blue-300 border-blue-800' : 'bg-green-900/30 text-green-300 border-green-800 group/asset'">
-                    <span class="opacity-70">{{ asset.type }}:</span>
-                    <span>{{ asset.author || 'Original' }}</span>
+                    <span class="opacity-70">{{ asset.type === 'VIDEO' ? 'ВИДЕО' : 'АУДИО' }}:</span>
+                    <span>{{ asset.author || 'Оригинал' }}</span>
                     <span class="text-[9px] font-mono opacity-60">({{ asset.name.toUpperCase() }})</span>
                     <button v-if="asset.type !== 'VIDEO'" @click="emit('delete-track', asset.link_id)"
                             class="opacity-0 group-hover/asset:opacity-100 hover:text-white text-green-600">×
@@ -116,9 +116,9 @@ const promptCreateEpisode = (titleId) => {
                   </div>
                 </div>
               </div>
-              <div @dragover.prevent @drop="handleDrop($event, title.id, 'new_group', 'title', 'New Version')"
+              <div @dragover.prevent @drop="handleDrop($event, title.id, 'new_group', 'title', 'Новая версия')"
                    class="p-4 border-2 border-dashed border-gray-700 rounded text-center text-xs font-bold text-gray-500 hover:border-brand hover:text-brand transition-all cursor-pointer">
-                + DROP VIDEO FOR NEW MOVIE VERSION
+                + ПЕРЕТАЩИТЕ ВИДЕО ДЛЯ НОВОЙ ВЕРСИИ ФИЛЬМА
               </div>
             </div>
           </template>
@@ -127,8 +127,8 @@ const promptCreateEpisode = (titleId) => {
             <div v-for="ep in title.episodes" :key="ep.id" class="border border-gray-800 rounded-lg overflow-hidden">
               <div @click="toggleEpisode(ep.id)"
                    class="p-3 text-sm font-bold text-gray-300 hover:bg-gray-800 cursor-pointer flex justify-between bg-black/20">
-                <span>S{{ ep.season_number }}E{{ ep.episode_number }}: {{ ep.name || 'Episode' }}</span>
-                <span class="text-[10px] text-gray-500">{{ ep.track_groups?.length || 0 }} Versions</span>
+                <span>Сезон {{ ep.season_number }} Серия {{ ep.episode_number }}: {{ ep.name || 'Без названия' }}</span>
+                <span class="text-[10px] text-gray-500">Версий: {{ ep.track_groups?.length || 0 }}</span>
               </div>
 
               <div v-if="expandedEpisodes.has(ep.id)" class="p-3 space-y-3 bg-gray-900/50">
@@ -149,14 +149,14 @@ const promptCreateEpisode = (titleId) => {
                     <div v-for="asset in group.assets" :key="asset.id"
                          class="text-[10px] font-bold px-2 py-1 rounded border flex items-center gap-1.5"
                          :class="asset.type === 'VIDEO' ? 'bg-blue-900/30 text-blue-300 border-blue-800' : 'bg-green-900/30 text-green-300 border-green-800 group/asset'">
-                      {{ asset.type }}: {{ asset.name }}
+                      {{ asset.type === 'VIDEO' ? 'ВИДЕО' : 'АУДИО' }}: {{ asset.name }}
                       <button v-if="asset.type !== 'VIDEO'" @click="emit('delete-track', asset.link_id)"
                               class="opacity-0 group-hover/asset:opacity-100 hover:text-white text-green-600">×
                       </button>
                     </div>
                   </div>
                 </div>
-                <div @dragover.prevent @drop="handleDrop($event, ep.id, 'new_group', 'episode', 'New Version')"
+                <div @dragover.prevent @drop="handleDrop($event, ep.id, 'new_group', 'episode', 'Новая версия')"
                      class="p-4 border-2 border-dashed border-gray-700 rounded text-center text-xs font-bold text-gray-500 hover:border-brand hover:text-brand hover:bg-brand/5 transition-all cursor-pointer group/zone">
                   <div class="flex flex-col items-center gap-1">
                     <svg class="w-5 h-5 text-gray-600 group-hover/zone:text-brand" fill="none" stroke="currentColor"
@@ -164,12 +164,12 @@ const promptCreateEpisode = (titleId) => {
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
                     </svg>
-                    <span>CREATE NEW VERSION (VIDEO REQUIRED)</span>
+                    <span>СОЗДАТЬ НОВУЮ ВЕРСИЮ (ТРЕБУЕТСЯ ВИДЕО)</span>
                   </div>
                 </div>
               </div>
             </div>
-            <div v-if="title.episodes.length === 0" class="text-xs text-gray-600 italic p-2">No episodes created yet.
+            <div v-if="title.episodes.length === 0" class="text-xs text-gray-600 italic p-2">Серии еще не созданы.
             </div>
           </template>
         </div>

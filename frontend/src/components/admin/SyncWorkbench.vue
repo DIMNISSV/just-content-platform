@@ -10,7 +10,7 @@ const props = defineProps({
 const assets = ref([]);
 const isLoading = ref(true);
 
-const groupName = ref('Standard Version');
+const groupName = ref('Стандартная версия');
 const groupAuthor = ref('');
 const selectedVideoId = ref('');
 const additionalTracks = ref([]);
@@ -40,7 +40,7 @@ const removeTrack = (index) => {
 
 const saveWorkbench = async () => {
   if (!selectedVideoId.value) {
-    alert("Please select a Base Video Asset.");
+    alert("Пожалуйста, выберите базовый видео-ассет.");
     return;
   }
 
@@ -62,15 +62,15 @@ const saveWorkbench = async () => {
     });
 
     if (res.ok) {
-      alert("Track Group saved successfully!");
+      alert("Группа дорожек успешно сохранена!");
       window.location.href = `/admin/content/${props.contentType}/${props.objectId}/change/`;
     } else {
       const err = await res.json();
-      alert("Error: " + (err.error || "Failed to save"));
+      alert("Ошибка: " + (err.error || "Не удалось сохранить"));
     }
   } catch (e) {
     console.error(e);
-    alert("Network error while saving.");
+    alert("Произошла сетевая ошибка при сохранении.");
   }
 };
 
@@ -81,27 +81,27 @@ onMounted(() => {
 
 <template>
   <div class="bg-gray-900 text-gray-200 p-6 rounded-lg shadow-xl border border-gray-700">
-    <div v-if="isLoading" class="text-center py-4">Loading Assets...</div>
+    <div v-if="isLoading" class="text-center py-4">Загрузка ассетов...</div>
 
     <div v-else class="space-y-6">
       <!-- 1. Basics -->
       <div class="grid grid-cols-3 gap-4">
         <div>
-          <label class="block text-sm font-bold text-gray-400 mb-1">Version Name</label>
+          <label class="block text-sm font-bold text-gray-400 mb-1">Название версии</label>
           <input v-model="groupName" type="text"
                  class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white">
         </div>
         <div>
-          <label class="block text-sm font-bold text-gray-400 mb-1">Release Group (Author)</label>
-          <input v-model="groupAuthor" type="text" placeholder="e.g. YIFY"
+          <label class="block text-sm font-bold text-gray-400 mb-1">Релиз-группа (Автор)</label>
+          <input v-model="groupAuthor" type="text" placeholder="например: YIFY"
                  class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white">
         </div>
         <div>
-          <label class="block text-sm font-bold text-gray-400 mb-1">Base Video Asset</label>
+          <label class="block text-sm font-bold text-gray-400 mb-1">Базовый видео-ассет</label>
           <select v-model="selectedVideoId" class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white">
-            <option disabled value="">-- Select Video --</option>
+            <option disabled value="">-- Выберите видео --</option>
             <option v-for="v in videoAssets" :key="v.id" :value="v.id">
-              {{ v.original_name }} ({{ v.variants.length }} qualities)
+              {{ v.original_name }} (вариантов качества: {{ v.variants.length }})
             </option>
           </select>
         </div>
@@ -110,48 +110,47 @@ onMounted(() => {
       <!-- 2. Additional Tracks -->
       <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
         <div class="flex justify-between items-center mb-4">
-          <h3 class="text-lg font-bold text-white">Audio & Subtitle Tracks</h3>
+          <h3 class="text-lg font-bold text-white">Аудиодорожки и субтитры</h3>
           <button @click.prevent="addTrack"
                   class="bg-brand text-white px-3 py-1 rounded text-sm hover:bg-red-700 transition">
-            + Add Track
+            + Добавить дорожку
           </button>
         </div>
 
         <div v-if="additionalTracks.length === 0" class="text-gray-500 text-sm italic">
-          No additional tracks added. Native audio will be used.
+          Дополнительные дорожки не добавлены. Будет использоваться оригинальный звук видеофайла.
         </div>
 
         <div v-for="(track, idx) in additionalTracks" :key="idx"
              class="flex items-end gap-4 mb-3 bg-gray-900 p-3 rounded">
           <div class="flex-1">
-            <label class="block text-xs text-gray-400 mb-1">Asset</label>
+            <label class="block text-xs text-gray-400 mb-1">Ассет</label>
             <select v-model="track.asset_id"
                     class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
-              <option disabled value="">-- Select Track --</option>
-              <option v-for="a in audioAssets" :key="a.id" :value="a.id">[{{ a.type }}] {{ a.original_name }}</option>
+              <option disabled value="">-- Выберите дорожку --</option>
+              <option v-for="a in audioAssets" :key="a.id" :value="a.id">[{{ a.type === 'AUDIO' ? 'АУДИО' : 'СУБТИТРЫ' }}] {{ a.original_name }}</option>
             </select>
           </div>
 
           <div class="w-24">
-            <label class="block text-xs text-gray-400 mb-1">Lang Code</label>
+            <label class="block text-xs text-gray-400 mb-1">Код языка</label>
             <input v-model="track.language" type="text" placeholder="rus"
                    class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
           </div>
 
           <div class="w-40">
-            <label class="block text-xs text-gray-400 mb-1">Voiceover Studio</label>
+            <label class="block text-xs text-gray-400 mb-1">Студия озвучки</label>
             <input v-model="track.author" type="text" placeholder="LostFilm"
                    class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
           </div>
 
           <div class="w-24">
-            <label class="block text-xs text-gray-400 mb-1">Offset (ms)</label>
+            <label class="block text-xs text-gray-400 mb-1">Смещение (мс)</label>
             <input v-model.number="track.offset_ms" type="number"
                    class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-sm text-white">
           </div>
 
-          <button @click.prevent="removeTrack(idx)" class="text-red-500 hover:text-red-400 p-2 text-xl font-bold">×
-          </button>
+          <button @click.prevent="removeTrack(idx)" class="text-red-500 hover:text-red-400 p-2 text-xl font-bold">×</button>
         </div>
       </div>
 
@@ -159,7 +158,7 @@ onMounted(() => {
       <div class="flex justify-end mt-6">
         <button @click.prevent="saveWorkbench"
                 class="bg-green-600 text-white px-6 py-2 rounded font-bold hover:bg-green-500 transition shadow-lg">
-          Save Track Group
+          Сохранить группу дорожек
         </button>
       </div>
     </div>
