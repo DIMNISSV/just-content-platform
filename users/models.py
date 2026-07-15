@@ -22,25 +22,36 @@ class UserManager(BaseUserManager):
 
 class User(AbstractUser):
     username = None
-    email = models.EmailField(_('email address'), unique=True)
-    trust_score = models.IntegerField(default=0)
+    email = models.EmailField(_('email address'), unique=True, verbose_name='Электронная почта')
+    trust_score = models.IntegerField(default=0, verbose_name='Уровень доверия')
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
 
     objects = UserManager()
 
+    class Meta:
+        verbose_name = 'Пользователь'
+        verbose_name_plural = 'Пользователи'
+
     def __str__(self):
         return self.email
 
 
 class UserPreference(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='preferences')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='preferences', verbose_name='Пользователь')
     language_code = models.CharField(max_length=20, default='rus',
-                                     help_text="Жесткое ограничение языка (напр. rus, eng)")
+                                     verbose_name='Код языка',
+                                     help_text="Жесткое ограничение языка (например: rus, eng)")
     preferred_voiceovers = models.JSONField(default=list, blank=True,
-                                            help_text="Массив приоритетов (напр. ['LostFilm', 'HDrezka'])")
-    auto_skip_intro = models.BooleanField(default=False, help_text="Автоматически пропускать заставки")
+                                            verbose_name='Приоритетные студии озвучки',
+                                            help_text="Массив приоритетов (например: ['LostFilm', 'HDrezka'])")
+    auto_skip_intro = models.BooleanField(default=False, verbose_name='Автопропуск заставки',
+                                          help_text="Автоматически пропускать заставки")
+
+    class Meta:
+        verbose_name = 'Настройки пользователя'
+        verbose_name_plural = 'Настройки пользователей'
 
     def __str__(self):
-        return f"Preferences of {self.user}"
+        return f"Настройки пользователя {self.user}"
