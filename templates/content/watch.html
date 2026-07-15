@@ -84,7 +84,8 @@
                            class="block p-4 rounded bg-gray-900 hover:bg-gray-800 border border-transparent hover:border-brand transition">
                             <div class="text-xs text-gray-500 uppercase font-bold">
                                 Сезон {{ ep.season_number }}</div>
-                            <div class="text-sm">Э{{ ep.episode_number }}: {{ ep.name|default:"Серия " }}</div>
+                            <div class="text-sm">Серия
+                                {{ ep.episode_number }}{% if ep.name %}. {{ ep.name }}{% endif %}</div>
                         </a>
                     {% endfor %}
                 </div>
