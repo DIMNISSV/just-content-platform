@@ -92,7 +92,7 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
             return {"error": "Title not found and no title_metadata provided"}, 400
 
         title = Title(
-            type=Title.Type.MOVIE,
+            type=title_meta.get('type', Title.Type.MOVIE),
             name=title_meta.get('name', 'Unknown'),
             original_name=title_meta.get('original_name', ''),
             description=title_meta.get('description', ''),
@@ -134,6 +134,7 @@ def process_plugin_payload(plugin, data: dict) -> tuple[dict, int]:
             try_update('original_name', title_meta.get('original_name'))
             try_update('description', title_meta.get('description'))
             try_update('release_year', title_meta.get('release_year'))
+            try_update('type', title_meta.get('type'))
 
             for k, v in external_ids.items():
                 if k in valid_id_fields and v:
