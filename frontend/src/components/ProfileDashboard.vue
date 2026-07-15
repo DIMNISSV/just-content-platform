@@ -1,27 +1,15 @@
 <script setup>
 import {onMounted, ref} from 'vue';
+import ProfilePreferences from './profile/ProfilePreferences.vue';
+import ProfileWatchHistory from './profile/ProfileWatchHistory.vue';
+import ProfileFavorites from './profile/ProfileFavorites.vue';
 
 const props = defineProps({csrfToken: String});
 
 const prefs = ref({language_code: 'rus', preferred_voiceovers: [], auto_skip_intro: false});
-const voiceoversInput = ref('');
-const isSaving = ref(false);
-const saveMessage = ref('');
-
 const history = ref([]);
 const favorites = ref([]);
 const isLoading = ref(true);
-
-const formatTime = (ms) => {
-  const totalSeconds = Math.floor(ms / 1000);
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-};
-
-const getWatchLink = (item) => {
-  return item.episode ? `/watch/episode/${item.episode.id}/` : `/watch/${item.title.id}/`;
-};
 
 const fetchDashboardData = async () => {
   isLoading.value = true;
@@ -34,42 +22,18 @@ const fetchDashboardData = async () => {
 
     if (prefRes.ok) {
       prefs.value = await prefRes.json();
-      voiceoversInput.value = (prefs.value.preferred_voiceovers || []).join(', ');
     }
-    if (histRes.ok) history.value = await histRes.json();
+    if (histRes.ok) {
+      history.value = await histRes.json();
+    }
     if (favRes.ok) {
       const favData = await favRes.json();
       favorites.value = favData.results || favData;
     }
-
   } catch (e) {
     console.error("Dashboard data load failed", e);
   } finally {
     isLoading.value = false;
-  }
-};
-
-const updatePreferences = async () => {
-  isSaving.value = true;
-  saveMessage.value = '';
-  prefs.value.preferred_voiceovers = voiceoversInput.value.split(',').map(s => s.trim()).filter(s => s);
-  try {
-    const res = await fetch('/api/v1/users/preferences/', {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': props.csrfToken
-      },
-      body: JSON.stringify(prefs.value)
-    });
-    if (res.ok) {
-      saveMessage.value = 'Настройки сохранены!';
-      setTimeout(() => saveMessage.value = '', 3000);
-    }
-  } catch (e) {
-    saveMessage.value = 'Ошибка при сохранении.';
-  } finally {
-    isSaving.value = false;
   }
 };
 
@@ -83,117 +47,12 @@ onMounted(fetchDashboardData);
 
   <div v-else class="flex flex-col md:flex-row gap-8">
     <aside class="w-full md:w-1/3 xl:w-1/4">
-      <div class="bg-card p-6 rounded-xl border border-gray-800 sticky top-24">
-        <h2 class="text-xl font-black tracking-tighter mb-6 uppercase text-brand">Настройки плеера</h2>
-
-        <div class="space-y-6">
-          <div>
-            <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Фильтр по коду языка</label>
-            <input
-                v-model="prefs.language_code"
-                type="text"
-                placeholder="например: rus, eng, jpn"
-                class="w-full bg-black border border-gray-700 rounded p-2 text-white focus:border-brand outline-none text-sm"
-            >
-            <p class="text-[10px] text-gray-600 mt-1">Жесткое ограничение для аудиодорожек (например, "rus").</p>
-          </div>
-
-          <div>
-            <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Приоритетные озвучки</label>
-            <textarea
-                v-model="voiceoversInput"
-                rows="3"
-                placeholder="LostFilm, HDrezka, TVShows..."
-                class="w-full bg-black border border-gray-700 rounded p-2 text-white focus:border-brand outline-none text-sm resize-none"
-            ></textarea>
-            <p class="text-[10px] text-gray-600 mt-1">Список студий через запятую в порядке убывания приоритета.</p>
-          </div>
-
-          <label class="flex items-center gap-3 cursor-pointer group">
-            <div class="relative">
-              <input type="checkbox" v-model="prefs.auto_skip_intro" class="sr-only">
-              <div class="block bg-gray-800 w-10 h-6 rounded-full border border-gray-700 transition"
-                   :class="prefs.auto_skip_intro ? 'bg-brand border-brand' : ''"></div>
-              <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform"
-                   :class="prefs.auto_skip_intro ? 'translate-x-4' : ''"></div>
-            </div>
-            <div class="text-sm font-bold text-gray-300 group-hover:text-white transition">Автопропуск заставок</div>
-          </label>
-
-          <button
-              @click="updatePreferences"
-              :disabled="isSaving"
-              class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded border border-gray-700 transition disabled:opacity-50"
-          >
-            {{ isSaving ? 'Сохранение...' : 'Сохранить настройки' }}
-          </button>
-
-          <div v-if="saveMessage" class="text-xs font-bold text-green-500 text-center transition-opacity">
-            {{ saveMessage }}
-          </div>
-        </div>
-      </div>
+      <ProfilePreferences :initial-prefs="prefs" :csrf-token="csrfToken"/>
     </aside>
 
     <main class="w-full md:w-2/3 xl:w-3/4 space-y-12">
-
-      <section>
-        <h2 class="text-2xl font-bold mb-6 tracking-tight border-l-4 border-gray-600 pl-3">История просмотров</h2>
-        <div v-if="history.length === 0" class="text-gray-500 text-sm">История просмотров пока пуста.</div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          <a v-for="item in history" :key="item.id" :href="getWatchLink(item)"
-             class="group bg-gray-900 rounded-lg overflow-hidden border border-gray-800 hover:border-brand transition block">
-            <div class="aspect-video relative bg-black">
-              <img v-if="item.title.poster" :src="item.title.poster"
-                   class="w-full h-full object-cover opacity-50 group-hover:opacity-70 transition-opacity">
-              <div class="absolute bottom-2 right-2 bg-black/80 px-2 py-1 rounded text-xs font-bold text-white">
-                {{ formatTime(item.progress_ms) }}
-              </div>
-            </div>
-            <div class="p-4">
-              <h3 class="text-sm font-bold text-white truncate">{{ item.title.name }}</h3>
-              <p class="text-xs text-gray-400 mt-1 truncate">
-                <template v-if="item.episode">Сезон {{ item.episode.season_number }} Серия {{
-                    item.episode.episode_number
-                  }}
-                </template>
-                <template v-else>Фильм</template>
-              </p>
-            </div>
-          </a>
-        </div>
-      </section>
-
-      <section>
-        <h2 class="text-2xl font-bold mb-6 tracking-tight border-l-4 border-brand pl-3">Мой список</h2>
-        <div v-if="favorites.length === 0" class="text-gray-500 text-sm">Ваш список пуст.</div>
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          <a v-for="title in favorites" :key="title.id" :href="`/watch/${title.id}/`" class="group block">
-            <div
-                class="aspect-[2/3] bg-gray-900 rounded-lg overflow-hidden mb-3 relative border border-gray-800 hover:border-brand transition">
-              <img v-if="title.poster" :src="title.poster" :alt="title.name"
-                   class="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300">
-              <div class="absolute top-2 right-2 bg-brand px-2 py-1 rounded text-xs font-bold text-white">*
-                {{ Number(title.rating_score).toFixed(1) }}
-              </div>
-            </div>
-            <h3 class="text-sm font-semibold truncate text-gray-200 group-hover:text-white">{{ title.name }}</h3>
-
-            <div class="flex flex-wrap gap-1 mt-1.5 h-4 overflow-hidden">
-              <span v-for="t in (title.taxonomy_items || []).filter(i => i.type !== 'TYPE').slice(0, 3)" :key="t.id"
-                    class="text-[9px] uppercase font-bold border border-gray-700 px-1 rounded truncate max-w-[80px]"
-                    :class="{
-                      'text-blue-400': t.type === 'GENRE',
-                      'text-green-400': t.type === 'TAG',
-                      'text-purple-400': t.type === 'CATEGORY'
-                    }">
-                {{ t.name }}
-              </span>
-            </div>
-          </a>
-        </div>
-      </section>
-
+      <ProfileWatchHistory :history="history"/>
+      <ProfileFavorites :favorites="favorites"/>
     </main>
   </div>
 </template>
