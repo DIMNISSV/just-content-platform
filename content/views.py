@@ -54,13 +54,11 @@ class TitleViewSet(viewsets.ReadOnlyModelViewSet):
         if genre:
             qs = qs.filter(taxonomy_items__slug=genre)
 
-        # Множественная фильтрация (И)
         if tax_items:
             slugs = tax_items.split(',')
             for slug in slugs:
                 qs = qs.filter(taxonomy_items__slug=slug.strip())
 
-        # Множественная фильтрация (ИЛИ)
         if tax_items_any:
             slugs = [s.strip() for s in tax_items_any.split(',')]
             qs = qs.filter(taxonomy_items__slug__in=slugs).distinct()
@@ -283,15 +281,16 @@ def player_manifest(request, content_type_str, object_id):
 @api_view(['POST'])
 def player_telemetry(request):
     if not request.user.is_authenticated:
-        return Response({"error": "Unauthorized"}, status=401)
+        return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
     data = request.data
     title_id = data.get('title_id')
     if not title_id:
-        return Response({"error": "title_id is required"}, status=400)
+        return Response({"error": "title_id is required"}, status=status.HTTP_400_BAD_REQUEST)
     try:
         title = Title.objects.get(id=title_id)
     except Title.DoesNotExist:
-        return Response({"error": "Title not found"}, status=404)
+        return Response({"error": "Title not found"}, status=status.HTTP_404_NOT_FOUND)
+
     episode_id = data.get('episode_id')
     track_group_id = data.get('track_group_id')
     audio_asset_id = data.get('audio_asset_id')
@@ -299,20 +298,98 @@ def player_telemetry(request):
     quality_label = data.get('quality_label')
     progress_ms = data.get('progress_ms', 0)
     is_completed = data.get('is_completed', False)
-    history, _ = WatchHistory.objects.update_or_create(
+
+    track_group = None
+    if track_group_id:
+        try:
+            track_group = TrackGroup.objects.get(id=track_group_id)
+        except TrackGroup.DoesNotExist:
+            pass
+
+    from content.services.history_service import update_episode_progress, update_title_progress
+
+    if episode_id:
+        try:
+            episode = Episode.objects.get(id=episode_id)
+            episode_history, title_history = update_episode_progress(
+                user=request.user,
+                episode=episode,
+                progress_ms=progress_ms,
+                is_completed=is_completed,
+                track_group=track_group,
+                last_audio_asset_id=audio_asset_id,
+                last_audio_track_name=audio_track_name,
+                last_quality_label=quality_label
+            )
+            return Response({"status": "saved", "progress_ms": episode_history.progress_ms})
+        except Episode.DoesNotExist:
+            return Response({"error": "Episode not found"}, status=status.HTTP_404_NOT_FOUND)
+    else:
+        title_history = update_title_progress(
+            user=request.user,
+            title=title,
+            progress_ms=progress_ms,
+            is_completed=is_completed,
+            track_group=track_group,
+            last_audio_asset_id=audio_asset_id,
+            last_audio_track_name=audio_track_name,
+            last_quality_label=quality_label
+        )
+        return Response({"status": "saved", "progress_ms": title_history.progress_ms})
+
+
+@api_view(['POST'])
+def episode_player_telemetry(request):
+    """
+    Dedicated endpoint for capturing single-episode watch progress.
+    Can be used in future extensions by external plugins.
+    """
+    if not request.user.is_authenticated:
+        return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    data = request.data
+    episode_id = data.get('episode_id')
+    if not episode_id:
+        return Response({"error": "episode_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        episode = Episode.objects.get(id=episode_id)
+    except Episode.DoesNotExist:
+        return Response({"error": "Episode not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    progress_ms = data.get('progress_ms', 0)
+    is_completed = data.get('is_completed', False)
+
+    track_group_id = data.get('track_group_id')
+    track_group = None
+    if track_group_id:
+        try:
+            track_group = TrackGroup.objects.get(id=track_group_id)
+        except TrackGroup.DoesNotExist:
+            pass
+
+    audio_asset_id = data.get('audio_asset_id')
+    audio_track_name = data.get('audio_track_name')
+    quality_label = data.get('quality_label')
+
+    from content.services.history_service import update_episode_progress
+    episode_history, title_history = update_episode_progress(
         user=request.user,
-        title=title,
-        defaults={
-            'episode_id': episode_id if episode_id else None,
-            'track_group_id': track_group_id if track_group_id else None,
-            'last_audio_asset_id': audio_asset_id if audio_asset_id else None,
-            'last_audio_track_name': audio_track_name if audio_track_name else None,
-            'last_quality_label': quality_label,
-            'progress_ms': progress_ms,
-            'is_completed': is_completed
-        }
+        episode=episode,
+        progress_ms=progress_ms,
+        is_completed=is_completed,
+        track_group=track_group,
+        last_audio_asset_id=audio_asset_id,
+        last_audio_track_name=audio_track_name,
+        last_quality_label=quality_label
     )
-    return Response({"status": "saved", "progress_ms": history.progress_ms})
+
+    return Response({
+        "status": "saved",
+        "episode_id": str(episode.id),
+        "progress_ms": episode_history.progress_ms,
+        "is_completed": episode_history.is_completed
+    })
 
 
 @api_view(['GET'])
@@ -530,10 +607,6 @@ class EpisodeWatchView(DetailView):
 
 
 class GenreViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    Эндпоинт, который отдает TaxonomyItem с типом GENRE,
-    тем самым сохраняя обратную совместимость с фронтендом, запрашивающим /genres/.
-    """
     queryset = TaxonomyItem.objects.filter(type=TaxonomyItem.TypeChoices.GENRE).order_by('name')
     serializer_class = TaxonomyItemSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]

@@ -36,23 +36,34 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
         const currentAudioAssetId = activeAudio.value ? activeAudio.value.asset_id : null;
         const currentAudioTrackName = getAudioFullName(activeAudio.value);
 
+        const endpoint = props.episodeId
+            ? '/api/v1/player/episode-telemetry/'
+            : '/api/v1/player/telemetry/';
+
+        const payload = {
+            progress_ms: currentMs,
+            is_completed: isCompleted,
+            track_group_id: isNaN(tGroupId) ? null : tGroupId,
+            audio_asset_id: currentAudioAssetId,
+            audio_track_name: currentAudioTrackName,
+            quality_label: currentQualityLabel,
+        };
+
+        // Для общего эндпоинта добавляем обязательный title_id
+        if (!props.episodeId) {
+            payload.title_id = props.titleId;
+        } else {
+            payload.episode_id = props.episodeId;
+        }
+
         try {
-            await fetch('/api/v1/player/telemetry/', {
+            await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': props.csrfToken
                 },
-                body: JSON.stringify({
-                    title_id: props.titleId,
-                    episode_id: props.episodeId || null,
-                    track_group_id: isNaN(tGroupId) ? null : tGroupId,
-                    audio_asset_id: currentAudioAssetId,
-                    audio_track_name: currentAudioTrackName,
-                    quality_label: currentQualityLabel,
-                    progress_ms: currentMs,
-                    is_completed: isCompleted
-                })
+                body: JSON.stringify(payload)
             });
         } catch (e) {
             // Игнорируем сетевые сбои телеметрии

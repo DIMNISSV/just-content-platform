@@ -67,7 +67,7 @@ class Episode(models.Model):
     name = models.CharField(max_length=255, blank=True, verbose_name='Название')
     description = models.TextField(blank=True, verbose_name='Описание')
     metadata_priority_level = models.IntegerField(default=0, help_text="Приоритет последнего обновившего источника",
-                                                  verbose_name='Уровень приоритета метаданных')
+                                                  verbose_name='Приоритет метаданных')
 
     class Meta:
         ordering = ['season_number', 'episode_number']
@@ -202,6 +202,26 @@ class WatchHistory(models.Model):
 
     def __str__(self):
         return f"{self.user} watching {self.title} ({self.progress_ms}ms)"
+
+
+class EpisodeWatchHistory(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='episode_watch_history',
+                             verbose_name='Пользователь')
+    episode = models.ForeignKey(Episode, on_delete=models.CASCADE, related_name='watch_history',
+                                verbose_name='Серия')
+    progress_ms = models.PositiveIntegerField(default=0, help_text="Текущая позиция воспроизведения в миллисекундах",
+                                              verbose_name='Прогресс (мс)')
+    is_completed = models.BooleanField(default=False, help_text="Установите в True, если просмотр завершен",
+                                       verbose_name='Просмотр завершен')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Дата обновления')
+
+    class Meta:
+        unique_together = ('user', 'episode')
+        verbose_name = 'История просмотра серии'
+        verbose_name_plural = 'Истории просмотра серий'
+
+    def __str__(self):
+        return f"{self.user} - {self.episode} ({self.progress_ms}ms)"
 
 
 class Favorite(models.Model):
