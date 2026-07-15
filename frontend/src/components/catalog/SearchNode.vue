@@ -3,53 +3,53 @@
     <div v-if="isLogical" class="flex flex-wrap items-center gap-2 mb-3">
       <select v-model="node.type"
               class="bg-gray-800 border border-gray-700 text-white text-xs px-3 py-1.5 rounded outline-none focus:border-brand transition">
-        <option value="AND">AND</option>
-        <option value="OR">OR</option>
-        <option value="NOT">NOT</option>
+        <option value="AND">И</option>
+        <option value="OR">ИЛИ</option>
+        <option value="NOT">НЕ</option>
       </select>
       <button @click="addRule"
               class="text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded transition">
-        + Rule
+        + Правило
       </button>
       <button @click="addGroup"
               class="text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 px-3 py-1.5 rounded transition">
-        + Group
+        + Группа
       </button>
       <button v-if="isRemovable" @click="$emit('remove')"
               class="text-xs text-brand hover:text-red-400 px-3 py-1.5 transition">
-        Remove
+        Удалить
       </button>
     </div>
 
     <div v-else class="flex flex-wrap items-center gap-2 mb-2 bg-gray-900 p-2 rounded border border-gray-800">
       <select v-model="node.field" @change="onFieldChange"
               class="bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1.5 rounded outline-none focus:border-brand">
-        <option value="genre">Genre</option>
-        <option value="tag">Tag</option>
-        <option value="category">Category</option>
-        <option value="type">Type</option>
-        <option value="release_year">Release Year</option>
-        <option value="rating_score">Rating Score</option>
-        <option value="name">Title Name</option>
+        <option value="genre">Жанр</option>
+        <option value="tag">Тег</option>
+        <option value="category">Категория</option>
+        <option value="type">Тип</option>
+        <option value="release_year">Год выпуска</option>
+        <option value="rating_score">Рейтинг</option>
+        <option value="name">Название</option>
       </select>
 
       <select v-model="node.operator"
               class="bg-gray-800 border border-gray-700 text-white text-xs px-2 py-1.5 rounded outline-none focus:border-brand">
-        <option value="exact">Equals</option>
-        <option value="icontains" v-if="node.field === 'name'">Contains</option>
-        <option value="gt" v-if="!['genre', 'tag', 'category', 'type', 'name'].includes(node.field)">Greater Than
+        <option value="exact">Равно</option>
+        <option value="icontains" v-if="node.field === 'name'">Содержит</option>
+        <option value="gt" v-if="!['genre', 'tag', 'category', 'type', 'name'].includes(node.field)">Больше чем
         </option>
-        <option value="lt" v-if="!['genre', 'tag', 'category', 'type', 'name'].includes(node.field)">Less Than</option>
+        <option value="lt" v-if="!['genre', 'tag', 'category', 'type', 'name'].includes(node.field)">Меньше чем</option>
       </select>
 
       <input v-if="!['genre', 'tag', 'category', 'type'].includes(node.field)" type="text" v-model="node.value"
              class="bg-gray-800 border border-gray-700 text-white text-xs px-3 py-1.5 rounded outline-none focus:border-brand"
-             placeholder="Value">
+             placeholder="Значение">
 
       <select v-if="node.field === 'type'" v-model="node.value"
               class="bg-gray-800 border border-gray-700 text-white text-xs px-3 py-1.5 rounded outline-none focus:border-brand">
-        <option value="MOVIE">Movie</option>
-        <option value="SERIES">Series</option>
+        <option value="MOVIE">Фильм</option>
+        <option value="SERIES">Сериал</option>
       </select>
 
       <select v-if="['genre', 'tag', 'category'].includes(node.field)" v-model="node.value"
@@ -58,7 +58,7 @@
       </select>
 
       <button @click="$emit('remove')" class="text-xs text-brand hover:text-red-400 px-2 transition ml-auto">
-        Remove
+        Удалить
       </button>
     </div>
 

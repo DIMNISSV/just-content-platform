@@ -1,13 +1,13 @@
 <template>
   <div class="bg-card border border-gray-800 rounded-xl p-4 mb-8">
     <div class="flex justify-between items-center mb-4 border-b border-gray-800 pb-2">
-      <h3 class="text-lg font-bold text-gray-200">Advanced Query Builder</h3>
+      <h3 class="text-lg font-bold text-gray-200">Конструктор расширенного поиска</h3>
       <div class="flex gap-2">
         <button @click="resetAst"
-                class="text-xs bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded transition">Reset
+                class="text-xs bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded transition">Сбросить
         </button>
         <button @click="applySearch"
-                class="text-xs bg-brand hover:bg-red-700 text-white font-bold px-4 py-1.5 rounded transition">Search
+                class="text-xs bg-brand hover:bg-red-700 text-white font-bold px-4 py-1.5 rounded transition">Искать
         </button>
       </div>
     </div>

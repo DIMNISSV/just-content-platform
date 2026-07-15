@@ -1,6 +1,6 @@
 <template>
   <div class="container mx-auto px-4 py-8">
-    <h1 class="text-3xl font-black mb-6 tracking-tight border-l-4 border-brand pl-3">Catalog</h1>
+    <h1 class="text-3xl font-black mb-6 tracking-tight border-l-4 border-brand pl-3">Каталог</h1>
 
     <SearchBuilder @search="handleSearch"/>
 
@@ -9,7 +9,7 @@
     </div>
 
     <div v-else-if="results.length === 0" class="text-center text-gray-500 py-12">
-      No titles match your criteria.
+      Произведения, соответствующие вашим критериям, не найдены.
     </div>
 
     <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
@@ -18,12 +18,12 @@
             class="aspect-[2/3] bg-gray-900 rounded-lg overflow-hidden mb-3 relative border border-gray-800 hover:border-brand transition">
           <img v-if="title.poster" :src="title.poster" :alt="title.name"
                class="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300">
-          <div v-else class="w-full h-full flex items-center justify-center text-gray-700 font-bold text-xl">No Poster
+          <div v-else class="w-full h-full flex items-center justify-center text-gray-700 font-bold text-xl">Нет постера
           </div>
 
           <div
               class="absolute top-2 right-2 bg-black bg-opacity-80 px-2 py-1 rounded text-xs font-bold text-yellow-400">
-            ★ {{ Number(title.rating_score).toFixed(1) }}
+            * {{ Number(title.rating_score).toFixed(1) }}
           </div>
         </div>
         <h3 class="text-sm font-semibold truncate text-gray-200 group-hover:text-white">{{ title.name }}</h3>
@@ -41,8 +41,8 @@
         </div>
 
         <div class="flex justify-between text-[10px] uppercase font-bold text-gray-500 mt-1">
-          <span>{{ title.release_year || "N/A" }}</span>
-          <span>{{ title.type }}</span>
+          <span>{{ title.release_year || "-" }}</span>
+          <span>{{ title.type === 'MOVIE' ? 'Фильм' : 'Сериал' }}</span>
         </div>
       </a>
     </div>
