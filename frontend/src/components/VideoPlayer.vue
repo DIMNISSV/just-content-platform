@@ -21,7 +21,9 @@ const props = defineProps({
   languageCode: {type: String, default: 'rus'},
   preferredVoiceovers: {type: String, default: '[]'},
   autoSkip: {type: [Boolean, String], default: false},
-  csrfToken: {type: String, required: true}
+  csrfToken: {type: String, required: true},
+  sessionToken: {type: String, default: ''},
+  pluginScriptUrl: {type: String, default: ''}
 });
 
 const getAudioFullName = (audioObj) => {
@@ -416,6 +418,27 @@ onMounted(() => {
   startTelemetry();
   document.addEventListener('fullscreenchange', handleFullscreenChange);
   window.addEventListener('keydown', handleKeyDown);
+
+  if (props.pluginScriptUrl) {
+    const script = document.createElement('script');
+    script.src = props.pluginScriptUrl;
+    script.async = true;
+
+    window.JCP_PlayerBridge = {
+      sessionToken: props.sessionToken,
+      contentId: props.contentId,
+      contentType: props.contentType,
+      sendTelemetry: (data) => {
+        sendTelemetry({
+          ...data,
+          title_id: props.titleId,
+          episode_id: props.episodeId,
+        });
+      }
+    };
+
+    document.head.appendChild(script);
+  }
 });
 
 onBeforeUnmount(() => {
