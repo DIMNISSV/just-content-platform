@@ -11,50 +11,159 @@
     {% vite_asset 'src/style.css' %}
     {% vite_asset 'src/main.js' %}
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col bg-dark text-white font-sans antialiased">
 <!-- Header -->
-<header class="bg-black bg-opacity-80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-800">
+<header class="bg-black/80 backdrop-blur-md sticky top-0 z-50 border-b border-gray-900/80">
     <div class="container mx-auto px-4 h-16 flex items-center justify-between gap-4">
-        <a href="/" class="text-brand text-2xl font-black tracking-tighter flex-shrink-0">JUST CONTENT</a>
-        <nav class="hidden md:flex gap-6 flex-shrink-0">
+        <!-- Brand Logo -->
+        <a href="/" class="text-brand text-2xl font-black tracking-tighter flex-shrink-0 hover:opacity-90 transition">
+            JUST CONTENT
+        </a>
+
+        <!-- Desktop Navigation -->
+        <nav class="hidden md:flex items-center gap-6 text-sm font-semibold text-gray-300">
             <a href="/" class="hover:text-brand transition-colors">Главная</a>
             <a href="{% url 'catalog' %}" class="hover:text-brand transition-colors">Каталог</a>
         </nav>
-        <div id="vue-global-search" class="flex-grow max-w-md hidden sm:block ml-auto relative z-50"></div>
 
+        <!-- Global Search Wrapper -->
+        <div id="vue-global-search" class="flex-grow max-w-md hidden sm:block mx-4 relative z-50"></div>
+
+        <!-- Right Side: User Menu / Auth Links -->
         <div class="flex items-center gap-4 flex-shrink-0">
             {% if user.is_authenticated %}
-                <div class="hidden sm:flex flex-col items-end">
-                    <span class="text-xs font-bold text-white">{{ user.email }}</span>
-                    <span class="text-[10px] text-brand uppercase font-black">Доверие: {{ user.trust_score }}</span>
+                <!-- User Profile Dropdown -->
+                <div class="relative inline-block text-left" id="user-dropdown-wrapper">
+                    <button type="button" id="user-menu-button"
+                            class="flex items-center gap-2 focus:outline-none group">
+                        <div class="w-10 h-10 bg-gray-900 border border-gray-800 group-hover:border-brand rounded-full flex items-center justify-center font-black text-brand transition-all">
+                            {{ user.email|make_list|first|upper }}
+                        </div>
+                        <svg class="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" fill="none"
+                             stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+
+                    <!-- Dropdown Menu Box -->
+                    <div id="user-dropdown"
+                         class="hidden absolute right-0 mt-2 w-56 bg-gray-950 border border-gray-800 rounded-lg shadow-2xl overflow-hidden z-50 transition-all duration-200">
+                        <div class="px-4 py-3 border-b border-gray-900 bg-black/40">
+                            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Авторизован как</p>
+                            <p class="text-sm font-bold text-white truncate mt-0.5"
+                               title="{{ user.email }}">{{ user.email }}</p>
+                            <p class="text-[10px] text-brand uppercase font-black tracking-widest mt-1">Рейтинг
+                                доверия: {{ user.trust_score }}</p>
+                        </div>
+                        <div class="py-1">
+                            <a href="{% url 'profile' %}"
+                               class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-900 hover:text-white transition-colors">
+                                Мой профиль
+                            </a>
+                            {% if user.is_staff %}
+                                <a href="{% url 'admin:index' %}"
+                                   class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-900 hover:text-white transition-colors">
+                                    Панель администратора
+                                </a>
+                            {% endif %}
+                        </div>
+                        <div class="border-t border-gray-900 py-1 bg-black/20">
+                            <form action="{% url 'logout' %}" method="post" class="block w-full">
+                                {% csrf_token %}
+                                <button type="submit"
+                                        class="block w-full text-left px-4 py-2 text-sm text-gray-400 hover:bg-gray-900 hover:text-brand transition-colors font-semibold">
+                                    Выйти из аккаунта
+                                </button>
+                            </form>
+                        </div>
+                    </div>
                 </div>
-                <a href="{% url 'profile' %}"
-                   class="w-10 h-10 bg-gray-800 rounded-full border border-gray-700 flex items-center justify-center font-black text-brand hover:border-brand transition">
-                    {{ user.email|make_list|first|upper }}
-                </a>
-                <form action="{% url 'logout' %}" method="post" class="inline">
-                    {% csrf_token %}
-                    <button type="submit" class="text-xs text-gray-500 hover:text-white transition">ВЫХОД</button>
-                </form>
             {% else %}
-                <a href="{% url 'login' %}" class="text-sm font-bold hover:text-brand transition">ВОЙТИ</a>
-                <a href="{% url 'register' %}"
-                   class="bg-brand text-white text-sm font-bold px-4 py-2 rounded hover:bg-red-700 transition">РЕГИСТРАЦИЯ</a>
+                <!-- Auth Links for Unregistered Users -->
+                <div class="hidden sm:flex items-center gap-4">
+                    <a href="{% url 'login' %}"
+                       class="text-sm font-bold text-gray-300 hover:text-brand transition-colors">ВОЙТИ</a>
+                    <a href="{% url 'register' %}"
+                       class="bg-brand text-white text-sm font-bold px-4 py-2 rounded hover:bg-red-700 transition duration-300 shadow-md">
+                        РЕГИСТРАЦИЯ
+                    </a>
+                </div>
             {% endif %}
+
+            <!-- Mobile Burger Menu Button -->
+            <button type="button" id="mobile-menu-button"
+                    class="md:hidden p-2 text-gray-400 hover:text-white focus:outline-none">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" id="burger-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+                <svg class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" id="close-icon">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
         </div>
+    </div>
+
+    <!-- Mobile Navigation Drawer -->
+    <div id="mobile-menu"
+         class="hidden md:hidden border-t border-gray-900 bg-gray-950/95 backdrop-blur-md px-4 py-4 space-y-4">
+        <nav class="flex flex-col gap-3 text-sm font-semibold text-gray-300">
+            <a href="/" class="hover:text-brand transition-colors py-1.5 border-b border-gray-900">Главная</a>
+            <a href="{% url 'catalog' %}" class="hover:text-brand transition-colors py-1.5 border-b border-gray-900">Каталог</a>
+            {% if not user.is_authenticated %}
+                <a href="{% url 'login' %}" class="hover:text-brand transition-colors py-1.5 border-b border-gray-900">Войти</a>
+                <a href="{% url 'register' %}" class="text-brand transition-colors py-1.5">Регистрация</a>
+            {% endif %}
+        </nav>
     </div>
 </header>
 
-<!-- Main Content -->
+<!-- Main Content Area -->
 <main class="flex-grow">
     {% block content %}{% endblock %}
 </main>
 
 <!-- Footer -->
-<footer class="py-8 mt-12 border-t border-gray-800 text-center text-gray-500 text-sm">
+<footer class="py-8 mt-12 border-t border-gray-900 text-center text-gray-500 text-sm bg-black/10">
     <div class="container mx-auto px-4">
         &copy; 2026 Платформа Just Content.
     </div>
 </footer>
+
+<!-- Header Controls Script -->
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // Toggle User Dropdown
+        const userMenuButton = document.getElementById('user-menu-button');
+        const userDropdown = document.getElementById('user-dropdown');
+        const userDropdownWrapper = document.getElementById('user-dropdown-wrapper');
+
+        if (userMenuButton && userDropdown) {
+            userMenuButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                userDropdown.classList.toggle('hidden');
+            });
+
+            document.addEventListener('click', (e) => {
+                if (userDropdownWrapper && !userDropdownWrapper.contains(e.target)) {
+                    userDropdown.classList.add('hidden');
+                }
+            });
+        }
+
+        // Toggle Mobile Menu Drawer
+        const mobileMenuButton = document.getElementById('mobile-menu-button');
+        const mobileMenu = document.getElementById('mobile-menu');
+        const burgerIcon = document.getElementById('burger-icon');
+        const closeIcon = document.getElementById('close-icon');
+
+        if (mobileMenuButton && mobileMenu) {
+            mobileMenuButton.addEventListener('click', () => {
+                mobileMenu.classList.toggle('hidden');
+                burgerIcon.classList.toggle('hidden');
+                closeIcon.classList.toggle('hidden');
+            });
+        }
+    });
+</script>
 </body>
 </html>
