@@ -5,7 +5,9 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
     const manifest = ref(null);
     const error = ref(null);
     const nextEpisodeId = ref(null);
+
     let telemetryInterval = null;
+    let heartbeatInterval = null;
 
     const fetchManifest = async () => {
         isLoading.value = true;
@@ -49,7 +51,6 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
             quality_label: currentQualityLabel,
         };
 
-        // Для общего эндпоинта добавляем обязательный title_id
         if (!props.episodeId) {
             payload.title_id = props.titleId;
         } else {
@@ -70,19 +71,54 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
         }
     };
 
+    const sendHeartbeat = async () => {
+        if (!props.sessionToken) return;
+
+        try {
+            const response = await fetch('/api/v1/player/session/heartbeat/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': props.csrfToken
+                },
+                body: JSON.stringify({
+                    session_token: props.sessionToken
+                })
+            });
+
+            if (!response.ok) {
+                console.warn("Viewing session heartbeat failed. Session may have expired.");
+            }
+        } catch (e) {
+            console.error("Network error during heartbeat:", e);
+        }
+    };
+
     const startTelemetry = () => {
         stopTelemetry();
+
+        // Telemetry interval (every 10 seconds if playing)
         telemetryInterval = setInterval(() => {
             if (videoRef.value && !videoRef.value.paused) {
                 sendTelemetry();
             }
         }, 10000);
+
+        // Heartbeat interval (every 10 minutes to keep session alive)
+        if (props.sessionToken) {
+            sendHeartbeat(); // Initial heartbeat
+            heartbeatInterval = setInterval(sendHeartbeat, 10 * 60 * 1000);
+        }
     };
 
     const stopTelemetry = () => {
         if (telemetryInterval) {
             clearInterval(telemetryInterval);
             telemetryInterval = null;
+        }
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
         }
     };
 
