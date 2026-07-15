@@ -106,3 +106,49 @@ def refresh_single_title_task(title_id: str):
             orchestrator._process_item(item)
     except Exception as e:
         logger.error(f"Error during single title refresh for {title_id}: {e}")
+
+
+@shared_task
+def deep_sync_kodik_title_task(kp_id=None, imdb_id=None, shiki_id=None, mdl_id=None):
+    """
+    Asynchronously queries the Kodik search API for a given title's external IDs
+    and processes the complete metadata tree (seasons, episodes) via Celery.
+    """
+    token = getattr(settings, 'KODIK_API_TOKEN', '')
+    plugin_id = getattr(settings, 'KODIK_PLUGIN_ID', 1)
+    if not token:
+        logger.error("KODIK_API_TOKEN is not configured in Django settings. Aborting deep sync task.")
+        return "Failed: Missing KODIK_API_TOKEN"
+
+    search_kwargs = {}
+    if kp_id:
+        search_kwargs['kinopoisk_id'] = kp_id
+    elif imdb_id:
+        search_kwargs['imdb_id'] = imdb_id
+    elif shiki_id:
+        search_kwargs['shikimori_id'] = shiki_id
+    elif mdl_id:
+        search_kwargs['mdl_id'] = mdl_id
+
+    if not search_kwargs:
+        return "Ignored: No external IDs provided"
+
+    try:
+        client = KodikListClient(token=token)
+        adapter = LocalServiceAdapter(plugin_id=plugin_id)
+        orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
+
+        logger.info(f"Starting async deep sync for {search_kwargs}")
+        data = client.get_page(use_search=True, **search_kwargs)
+        results = data.get('results', [])
+
+        success_count, error_count = 0, 0
+        for item in results:
+            succ, err = orchestrator._process_item(item)
+            success_count += succ
+            error_count += err
+
+        return f"Deep sync done. Success: {success_count}, Errors: {error_count}"
+    except Exception as e:
+        logger.exception(f"Fatal error occurred during background deep sync execution for {search_kwargs}.")
+        return f"Failed: {str(e)}"

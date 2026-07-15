@@ -152,7 +152,6 @@ class KodikSyncOrchestrator:
                 "Provided client does not support dump downloads. Please supply a KodikDumpClient instance.")
 
         file_path = self.client.download_dump(dump_name)
-        list_client = KodikListClient(token=self.client.token)
 
         success_count, error_count, items_processed = 0, 0, 0
 
@@ -184,45 +183,26 @@ class KodikSyncOrchestrator:
                     items_processed += 1
                     continue
 
+                # Fast local save of the dump element
+                succ, err = self._process_item(item)
+                success_count += succ
+                error_count += err
+
                 if query:
-                    search_kwargs = {}
-                    if kp_id:
-                        search_kwargs['kinopoisk_id'] = kp_id
-                    elif imdb_id:
-                        search_kwargs['imdb_id'] = imdb_id
-                    elif shiki_id:
-                        search_kwargs['shikimori_id'] = shiki_id
-                    elif mdl_id:
-                        search_kwargs['mdl_id'] = mdl_id
+                    from kodik_plugin.tasks import deep_sync_kodik_title_task
+                    deep_sync_kodik_title_task.delay(
+                        kp_id=kp_id,
+                        imdb_id=imdb_id,
+                        shiki_id=shiki_id,
+                        mdl_id=mdl_id
+                    )
 
-                    try:
-                        api_data = list_client.get_page(use_search=True, **search_kwargs)
-                        results = api_data.get('results', [])
-                        if not results:
-                            succ, err = self._process_item(item)
-                            success_count += succ
-                            error_count += err
-                        else:
-                            for api_item in results:
-                                succ, err = self._process_item(api_item)
-                                success_count += succ
-                                error_count += err
-
-                        KodikDumpProcessedID.objects.create(
-                            kp_id=kp_id,
-                            imdb_id=imdb_id,
-                            shiki_id=shiki_id,
-                            mdl_id=mdl_id
-                        )
-                    except Exception as e:
-                        logger.error(f"Error fetching deep API for dump item {item.get('id')}: {e}")
-                        succ, err = self._process_item(item)
-                        success_count += succ
-                        error_count += err
-                else:
-                    succ, err = self._process_item(item)
-                    success_count += succ
-                    error_count += err
+                    KodikDumpProcessedID.objects.create(
+                        kp_id=kp_id,
+                        imdb_id=imdb_id,
+                        shiki_id=shiki_id,
+                        mdl_id=mdl_id
+                    )
 
                 items_processed += 1
 
