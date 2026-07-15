@@ -11,7 +11,8 @@ from kodik_plugin.adapters.base import BaseJCPAdapter
 from kodik_plugin.client.dump_api import KodikDumpClient
 from kodik_plugin.client.list_api import KodikListClient
 from kodik_plugin.mapper.episode_mapper import map_kodik_item_to_jcp_payloads
-from kodik_plugin.models import KodikSyncState
+from kodik_plugin.mapper.title_mapper import extract_external_ids
+from kodik_plugin.models import KodikSyncState, KodikDumpProcessedID
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +30,6 @@ class KodikSyncOrchestrator:
 
     def run_update_existing(self, title_type: str = 'SERIES', delay: float = 0.5, stale_minutes: int = 0) -> tuple[
         int, int]:
-        """
-        Iterates over existing titles in the database and updates them via Kodik search API.
-        """
         logger.info(
             f"Starting update of existing titles. Type: {title_type}, Delay: {delay}s, Stale minutes: {stale_minutes}")
 
@@ -97,7 +95,7 @@ class KodikSyncOrchestrator:
         state_obj, _ = KodikSyncState.objects.get_or_create(key=state_key)
         next_page_url = state_obj.state_data.get('next_page_url') if resume else None
 
-        success_count, error_count, pages_processed, items_processed = 0, 0, 0, 0
+        success_count, error_count, pages_processed, items_processed = 0, 0, 0
 
         try:
             while True:
@@ -154,6 +152,7 @@ class KodikSyncOrchestrator:
                 "Provided client does not support dump downloads. Please supply a KodikDumpClient instance.")
 
         file_path = self.client.download_dump(dump_name)
+        list_client = KodikListClient(token=self.client.token)
 
         success_count, error_count, items_processed = 0, 0, 0
 
@@ -169,17 +168,68 @@ class KodikSyncOrchestrator:
                     break
 
                 item = data[i]
-                succ, err = self._process_item(item)
-                success_count += succ
-                error_count += err
+                ext_ids = extract_external_ids(item)
+                kp_id = ext_ids.get('kp_id')
+                imdb_id = ext_ids.get('imdb_id')
+                shiki_id = ext_ids.get('shiki_id')
+                mdl_id = ext_ids.get('mdl_id')
+
+                query = Q()
+                if kp_id: query |= Q(kp_id=kp_id)
+                if imdb_id: query |= Q(imdb_id=imdb_id)
+                if shiki_id: query |= Q(shiki_id=shiki_id)
+                if mdl_id: query |= Q(mdl_id=mdl_id)
+
+                if query and KodikDumpProcessedID.objects.filter(query).exists():
+                    items_processed += 1
+                    continue
+
+                if query:
+                    search_kwargs = {}
+                    if kp_id:
+                        search_kwargs['kinopoisk_id'] = kp_id
+                    elif imdb_id:
+                        search_kwargs['imdb_id'] = imdb_id
+                    elif shiki_id:
+                        search_kwargs['shikimori_id'] = shiki_id
+                    elif mdl_id:
+                        search_kwargs['mdl_id'] = mdl_id
+
+                    try:
+                        api_data = list_client.get_page(use_search=True, **search_kwargs)
+                        results = api_data.get('results', [])
+                        if not results:
+                            succ, err = self._process_item(item)
+                            success_count += succ
+                            error_count += err
+                        else:
+                            for api_item in results:
+                                succ, err = self._process_item(api_item)
+                                success_count += succ
+                                error_count += err
+
+                        KodikDumpProcessedID.objects.create(
+                            kp_id=kp_id,
+                            imdb_id=imdb_id,
+                            shiki_id=shiki_id,
+                            mdl_id=mdl_id
+                        )
+                    except Exception as e:
+                        logger.error(f"Error fetching deep API for dump item {item.get('id')}: {e}")
+                        succ, err = self._process_item(item)
+                        success_count += succ
+                        error_count += err
+                else:
+                    succ, err = self._process_item(item)
+                    success_count += succ
+                    error_count += err
+
                 items_processed += 1
 
-                # Periodically save state
                 if items_processed % 100 == 0:
                     state_obj.state_data['last_index'] = i + 1
                     state_obj.save(update_fields=['state_data', 'updated_at'])
 
-            # Final state save
             state_obj.state_data['last_index'] = start_index + items_processed
             state_obj.save(update_fields=['state_data', 'updated_at'])
 
