@@ -20,12 +20,14 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("Posters directory does not exist."))
             return
 
-        pattern = re.compile(r'^poster_.*?_kp(.*?)_imdb(.*?)_shiki(.*?)_mdl(.*?)\.webp$')
+        # Поддержка как старого формата с UUID, так и нового без него
+        pattern1 = re.compile(r'^poster_.*?_kp(.*?)_imdb(.*?)_shiki(.*?)_mdl(.*?)\.webp$')
+        pattern2 = re.compile(r'^poster_kp(.*?)_imdb(.*?)_shiki(.*?)_mdl(.*?)\.webp$')
         count = 0
 
         for entry in os.scandir(posters_dir):
             if entry.is_file() and entry.name.endswith('.webp'):
-                match = pattern.match(entry.name)
+                match = pattern1.match(entry.name) or pattern2.match(entry.name)
                 if match:
                     kp, imdb, shiki, mdl = match.groups()
                     rel_path = f"posters/{entry.name}"

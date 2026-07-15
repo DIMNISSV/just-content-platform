@@ -6,8 +6,9 @@ import requests
 from PIL import Image
 from celery import shared_task
 from django.conf import settings
-from django.core.cache import cache
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from django.db.models import Q
 
 from .models import Title
 
@@ -18,35 +19,54 @@ logger = logging.getLogger(__name__)
 def download_and_save_poster(title_id, poster_url):
     """
     Downloads the poster image from the given URL, converts it to WebP,
-    and saves it to the Title instance. Checks Redis cache first to avoid duplicates.
+    and saves it to the Title instance. Checks DB and disk first to avoid duplicates.
     """
     try:
         title = Title.objects.get(id=title_id)
         if title.poster and title.poster_url == poster_url:
             return
 
-        keys_to_check = []
-        if title.kp_id:
-            keys_to_check.append(f"poster_idx:kp:{title.kp_id}")
-        if title.imdb_id:
-            keys_to_check.append(f"poster_idx:imdb:{title.imdb_id}")
-        if title.shiki_id:
-            keys_to_check.append(f"poster_idx:shiki:{title.shiki_id}")
-        if title.mdl_id:
-            keys_to_check.append(f"poster_idx:mdl:{title.mdl_id}")
+        query = Q()
+        if title.kp_id: query |= Q(kp_id=title.kp_id)
+        if title.imdb_id: query |= Q(imdb_id=title.imdb_id)
+        if title.shiki_id: query |= Q(shiki_id=title.shiki_id)
+        if title.mdl_id: query |= Q(mdl_id=title.mdl_id)
 
-        for key in keys_to_check:
-            cached_path = cache.get(key)
-            if cached_path:
-                full_path = os.path.join(settings.MEDIA_ROOT, cached_path)
-                if os.path.exists(full_path):
-                    title.poster.name = cached_path
+        if query:
+            existing = Title.objects.exclude(id=title.id).filter(query).exclude(poster='').first()
+            if existing:
+                title.poster.name = existing.poster.name
+                title.poster_url = poster_url
+                title._is_webhook_update = True
+                title.save(update_fields=['poster', 'poster_url'])
+                logger.info(f"Re-used existing poster from Title {existing.id} for Title {title_id}")
+                return
+
+        posters_dir = os.path.join(settings.MEDIA_ROOT, 'posters')
+        if os.path.exists(posters_dir) and query:
+            for file_name in os.listdir(posters_dir):
+                if not file_name.endswith('.webp'):
+                    continue
+
+                match = False
+                if title.kp_id and f"_kp{title.kp_id}_" in file_name:
+                    match = True
+                elif title.imdb_id and f"_imdb{title.imdb_id}_" in file_name:
+                    match = True
+                elif title.shiki_id and f"_shiki{title.shiki_id}_" in file_name:
+                    match = True
+                elif title.mdl_id and (f"_mdl{title.mdl_id}.webp" in file_name or f"_mdl{title.mdl_id}_" in file_name):
+                    match = True
+
+                if match:
+                    title.poster.name = f"posters/{file_name}"
                     title.poster_url = poster_url
                     title._is_webhook_update = True
                     title.save(update_fields=['poster', 'poster_url'])
-                    logger.info(f"Re-used existing poster from cache for Title {title_id}")
+                    logger.info(f"Re-used existing poster {file_name} from disk for Title {title_id}")
                     return
 
+        # 3. Download and Save
         response = requests.get(poster_url, timeout=15)
         if response.status_code == 200:
             img = Image.open(io.BytesIO(response.content))
@@ -61,15 +81,16 @@ def download_and_save_poster(title_id, poster_url):
             shiki = f"shiki{title.shiki_id}" if title.shiki_id else "shiki"
             mdl = f"mdl{title.mdl_id}" if title.mdl_id else "mdl"
 
-            filename = f"poster_{title.id}_{kp}_{imdb}_{shiki}_{mdl}.webp"
+            filename = f"poster_{kp}_{imdb}_{shiki}_{mdl}.webp"
+            rel_path = f"posters/{filename}"
+
+            if default_storage.exists(rel_path):
+                default_storage.delete(rel_path)
 
             title.poster.save(filename, ContentFile(webp_io.getvalue()), save=False)
             title.poster_url = poster_url
             title._is_webhook_update = True
             title.save(update_fields=['poster', 'poster_url'])
-
-            for key in keys_to_check:
-                cache.set(key, title.poster.name, timeout=None)
 
             logger.info(f"Successfully downloaded, converted, and saved poster for Title {title_id}")
         else:
