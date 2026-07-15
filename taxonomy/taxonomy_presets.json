@@ -97,6 +97,7 @@
     {"raw_term": "multi-part-film", "source_field": "type", "maps_to": ["type-series"]},
     {"raw_term": "cartoon-serial", "source_field": "type", "maps_to": ["type-series", "cat-cartoon"]},
     {"raw_term": "documentary-serial", "source_field": "type", "maps_to": ["type-series", "cat-documentary"]},
+    {"raw_term": "russian-documentary-serial", "source_field": "type", "maps_to": ["type-series", "cat-documentary"]},
     {"raw_term": "russian-serial", "source_field": "type", "maps_to": ["type-series"]},
     {"raw_term": "soviet-cartoon-serial", "source_field": "type", "maps_to": ["type-series", "cat-cartoon"]},
     {"raw_term": "foreign-cartoon-serial", "source_field": "type", "maps_to": ["type-series", "cat-cartoon"]},
