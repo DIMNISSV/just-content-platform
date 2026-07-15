@@ -22,7 +22,7 @@ class UserManager(BaseUserManager):
 
 class User(AbstractUser):
     username = None
-    email = models.EmailField(_('email address'), unique=True, verbose_name='Электронная почта')
+    email = models.EmailField(verbose_name='Электронная почта', unique=True)
     trust_score = models.IntegerField(default=0, verbose_name='Уровень доверия')
 
     USERNAME_FIELD = 'email'
