@@ -1,3 +1,6 @@
+import uuid
+
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
 
@@ -47,6 +50,12 @@ class PluginProvider(models.Model):
         verbose_name="Приоритет метаданных",
         help_text="Приоритет метаданных плагина. Чем выше, тем авторитетнее источник"
     )
+    client_script_url = models.URLField(
+        blank=True,
+        null=True,
+        verbose_name="URL клиентского скрипта",
+        help_text="URL JavaScript файла плагина для отслеживания телеметрии на фронтенде"
+    )
 
     class Meta:
         verbose_name = 'Провайдер плагина'
@@ -88,3 +97,20 @@ class ExternalContentRegistry(models.Model):
     def __str__(self):
         obj_name = f"{self.title.name} S{self.episode.season_number}E{self.episode.episode_number}" if self.episode else self.title.name
         return f"[{self.plugin.name}] {obj_name} ({self.content_type})"
+
+
+class ViewingSession(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='viewing_sessions',
+                             verbose_name='Пользователь')
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, verbose_name='Тип контента')
+    object_id = models.CharField(max_length=255, db_index=True, verbose_name='ID объекта')
+    expires_at = models.DateTimeField(verbose_name='Срок истечения')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
+
+    class Meta:
+        verbose_name = 'Сессия просмотра'
+        verbose_name_plural = 'Сессии просмотра'
+
+    def __str__(self):
+        return f"Session {self.id} for User {self.user.email}"
