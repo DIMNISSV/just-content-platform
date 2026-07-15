@@ -4,7 +4,6 @@ import {computed} from 'vue';
 const props = defineProps({
   currentTime: {type: Number, default: 0},
   duration: {type: Number, default: 0},
-  // В будущем будем получать эти значения из манифеста
   skipEnd: {type: Number, default: 5}
 });
 
@@ -26,7 +25,7 @@ const isVisible = computed(() => {
         <path
             d="M4.555 5.168A1 1 0 003 6v8a1 1 0 001.555.832L10 11.202V14a1 1 0 001.555.832l7-4a1 1 0 000-1.664l-7-4A1 1 0 0010 6v2.798L4.555 5.168z"/>
       </svg>
-      Skip Intro
+      Пропустить заставку
     </button>
   </Transition>
 </template>

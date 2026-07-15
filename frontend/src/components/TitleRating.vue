@@ -40,15 +40,15 @@ const submitRating = async (score) => {
 
     if (res.ok) {
       currentScore.value = score;
-      statusMessage.value = 'Thanks for your rating!';
+      statusMessage.value = 'Спасибо за оценку!';
       setTimeout(() => statusMessage.value = '', 3000);
     } else {
       const data = await res.json();
-      statusMessage.value = data.error || 'Failed to submit rating.';
+      statusMessage.value = data.error || 'Не удалось сохранить оценку.';
     }
   } catch (e) {
     console.error(e);
-    statusMessage.value = 'Network error.';
+    statusMessage.value = 'Ошибка сети.';
   } finally {
     isSubmitting.value = false;
   }
@@ -57,7 +57,7 @@ const submitRating = async (score) => {
 
 <template>
   <div class="bg-gray-900/50 p-4 rounded-xl border border-gray-800 inline-block">
-    <div class="text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Rate this title</div>
+    <div class="text-xs font-bold text-gray-500 uppercase mb-2 tracking-widest">Оцените произведение</div>
 
     <div class="flex items-center gap-1" @mouseleave="clearHover">
       <button

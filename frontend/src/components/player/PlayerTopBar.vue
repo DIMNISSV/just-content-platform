@@ -42,15 +42,15 @@ const rateTrack = (score) => {
     <!-- Audio Selection -->
     <div v-if="currentGroupAudios.length > 0"
          class="flex items-center bg-gray-900 border border-gray-700 rounded overflow-hidden shadow-2xl backdrop-blur-md">
-      <div class="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider border-r border-gray-700">Audio
+      <div class="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider border-r border-gray-700">Звук
       </div>
       <select
           class="bg-transparent text-white text-sm font-semibold outline-none px-2 py-1.5 cursor-pointer appearance-none"
           @change="onAudioChange">
-        <option value="original" class="bg-gray-900">Original</option>
+        <option value="original" class="bg-gray-900">Оригинал</option>
         <option v-for="a in currentGroupAudios" :key="a.id" :value="a.id" class="bg-gray-900"
                 :selected="activeAudioId === a.id">
-          {{ a.meta_info?.author || 'Original' }}
+          {{ a.meta_info?.author || 'Оригинал' }}
           ({{ (a.meta_info?.language || '??').toUpperCase() }})
           {{ a.provider ? `[${a.provider}] ` : '' }}
         </option>
@@ -61,7 +61,7 @@ const rateTrack = (score) => {
     <div
         class="flex items-center bg-gray-900 border border-gray-700 rounded shadow-2xl backdrop-blur-md relative">
       <div class="px-3 py-1.5 text-xs font-bold text-gray-400 uppercase tracking-wider border-r border-gray-700">
-        Version
+        Версия
       </div>
       <select :value="activeGroupId" @change="onGroupChange"
               class="bg-transparent text-white text-sm font-semibold outline-none px-2 py-1.5 cursor-pointer appearance-none max-w-[200px] truncate">
@@ -75,7 +75,7 @@ const rateTrack = (score) => {
         <button
             @click="toggleRatingMenu"
             class="text-yellow-500 hover:scale-110 transition-transform py-1 flex items-center"
-            title="Rate this version"
+            title="Оценить версию"
         >
           <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
             <path

@@ -70,7 +70,7 @@ onBeforeUnmount(() => {
           @focus="query.length >= 2 ? isOpen = true : null"
           type="text"
           class="w-full bg-gray-900 border border-gray-700 text-white text-sm rounded-full focus:ring-brand focus:border-brand block pl-10 p-2 placeholder-gray-500 transition-colors"
-          placeholder="Search movies, series..."
+          placeholder="Поиск фильмов, сериалов..."
       >
       <button
           v-if="query.length > 0"
@@ -92,7 +92,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else-if="results.length === 0 && query.length >= 2" class="p-4 text-center text-sm text-gray-500">
-        No results found for "{{ query }}"
+        Ничего не найдено по запросу "{{ query }}"
       </div>
 
       <ul v-else class="overflow-y-auto custom-scrollbar">
@@ -108,10 +108,10 @@ onBeforeUnmount(() => {
               <p class="text-xs text-gray-500 truncate">{{ title.original_name }}</p>
               <div class="flex flex-wrap items-center gap-2 mt-1">
                 <span class="text-[10px] font-bold bg-gray-800 px-1.5 py-0.5 rounded text-gray-300">
-                  {{ title.release_year || 'N/A' }}
+                  {{ title.release_year || '-' }}
                 </span>
                 <span class="text-[10px] font-bold text-yellow-500 flex items-center gap-0.5">
-                  ★ {{ Number(title.rating_score).toFixed(1) }}
+                  * {{ Number(title.rating_score).toFixed(1) }}
                 </span>
 
                 <template v-if="title.taxonomy_items && title.taxonomy_items.length">
@@ -126,7 +126,7 @@ onBeforeUnmount(() => {
                   </span>
                 </template>
                 <span v-else class="text-[10px] uppercase text-gray-500 font-bold border border-gray-700 px-1 rounded">
-                  {{ title.type === 'MOVIE' ? 'Movie' : 'Series' }}
+                  {{ title.type === 'MOVIE' ? 'Фильм' : 'Сериал' }}
                 </span>
               </div>
             </div>
@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
       <div v-if="results.length > 0" class="p-2 border-t border-gray-800 bg-black/50">
         <a href="/catalog/"
            class="block text-center text-xs font-bold text-brand hover:text-white transition-colors py-1">
-          View all in Catalog &rarr;
+          Посмотреть все в каталоге &rarr;
         </a>
       </div>
     </div>

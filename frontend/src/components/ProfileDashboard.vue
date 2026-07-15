@@ -63,11 +63,11 @@ const updatePreferences = async () => {
       body: JSON.stringify(prefs.value)
     });
     if (res.ok) {
-      saveMessage.value = 'Settings saved!';
+      saveMessage.value = 'Настройки сохранены!';
       setTimeout(() => saveMessage.value = '', 3000);
     }
   } catch (e) {
-    saveMessage.value = 'Error saving.';
+    saveMessage.value = 'Ошибка при сохранении.';
   } finally {
     isSaving.value = false;
   }
@@ -84,30 +84,29 @@ onMounted(fetchDashboardData);
   <div v-else class="flex flex-col md:flex-row gap-8">
     <aside class="w-full md:w-1/3 xl:w-1/4">
       <div class="bg-card p-6 rounded-xl border border-gray-800 sticky top-24">
-        <h2 class="text-xl font-black tracking-tighter mb-6 uppercase text-brand">Playback Settings</h2>
+        <h2 class="text-xl font-black tracking-tighter mb-6 uppercase text-brand">Настройки плеера</h2>
 
         <div class="space-y-6">
           <div>
-            <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Language Code Filter</label>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Фильтр по коду языка</label>
             <input
                 v-model="prefs.language_code"
                 type="text"
-                placeholder="e.g. rus, eng, jpn"
+                placeholder="например: rus, eng, jpn"
                 class="w-full bg-black border border-gray-700 rounded p-2 text-white focus:border-brand outline-none text-sm"
             >
-            <p class="text-[10px] text-gray-600 mt-1">Strict filter for audio tracks (e.g. "rus").</p>
+            <p class="text-[10px] text-gray-600 mt-1">Жесткое ограничение для аудиодорожек (например, "rus").</p>
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Priority Voiceovers</label>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Приоритетные озвучки</label>
             <textarea
                 v-model="voiceoversInput"
                 rows="3"
                 placeholder="LostFilm, HDrezka, TVShows..."
                 class="w-full bg-black border border-gray-700 rounded p-2 text-white focus:border-brand outline-none text-sm resize-none"
             ></textarea>
-            <p class="text-[10px] text-gray-600 mt-1">Comma-separated list of studios from highest priority to
-              lowest.</p>
+            <p class="text-[10px] text-gray-600 mt-1">Список студий через запятую в порядке убывания приоритета.</p>
           </div>
 
           <label class="flex items-center gap-3 cursor-pointer group">
@@ -118,7 +117,7 @@ onMounted(fetchDashboardData);
               <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform"
                    :class="prefs.auto_skip_intro ? 'translate-x-4' : ''"></div>
             </div>
-            <div class="text-sm font-bold text-gray-300 group-hover:text-white transition">Auto-Skip Intros</div>
+            <div class="text-sm font-bold text-gray-300 group-hover:text-white transition">Автопропуск заставок</div>
           </label>
 
           <button
@@ -126,7 +125,7 @@ onMounted(fetchDashboardData);
               :disabled="isSaving"
               class="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded border border-gray-700 transition disabled:opacity-50"
           >
-            {{ isSaving ? 'Saving...' : 'Save Settings' }}
+            {{ isSaving ? 'Сохранение...' : 'Сохранить настройки' }}
           </button>
 
           <div v-if="saveMessage" class="text-xs font-bold text-green-500 text-center transition-opacity">
@@ -139,8 +138,8 @@ onMounted(fetchDashboardData);
     <main class="w-full md:w-2/3 xl:w-3/4 space-y-12">
 
       <section>
-        <h2 class="text-2xl font-bold mb-6 tracking-tight border-l-4 border-gray-600 pl-3">History</h2>
-        <div v-if="history.length === 0" class="text-gray-500 text-sm">No watch history yet.</div>
+        <h2 class="text-2xl font-bold mb-6 tracking-tight border-l-4 border-gray-600 pl-3">История просмотров</h2>
+        <div v-if="history.length === 0" class="text-gray-500 text-sm">История просмотров пока пуста.</div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <a v-for="item in history" :key="item.id" :href="getWatchLink(item)"
              class="group bg-gray-900 rounded-lg overflow-hidden border border-gray-800 hover:border-brand transition block">
@@ -154,11 +153,11 @@ onMounted(fetchDashboardData);
             <div class="p-4">
               <h3 class="text-sm font-bold text-white truncate">{{ item.title.name }}</h3>
               <p class="text-xs text-gray-400 mt-1 truncate">
-                <template v-if="item.episode">S{{ item.episode.season_number }} E{{
+                <template v-if="item.episode">Сезон {{ item.episode.season_number }} Серия {{
                     item.episode.episode_number
                   }}
                 </template>
-                <template v-else>Movie</template>
+                <template v-else>Фильм</template>
               </p>
             </div>
           </a>
@@ -166,15 +165,15 @@ onMounted(fetchDashboardData);
       </section>
 
       <section>
-        <h2 class="text-2xl font-bold mb-6 tracking-tight border-l-4 border-brand pl-3">My List</h2>
-        <div v-if="favorites.length === 0" class="text-gray-500 text-sm">Your list is empty.</div>
+        <h2 class="text-2xl font-bold mb-6 tracking-tight border-l-4 border-brand pl-3">Мой список</h2>
+        <div v-if="favorites.length === 0" class="text-gray-500 text-sm">Ваш список пуст.</div>
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           <a v-for="title in favorites" :key="title.id" :href="`/watch/${title.id}/`" class="group block">
             <div
                 class="aspect-[2/3] bg-gray-900 rounded-lg overflow-hidden mb-3 relative border border-gray-800 hover:border-brand transition">
               <img v-if="title.poster" :src="title.poster" :alt="title.name"
                    class="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300">
-              <div class="absolute top-2 right-2 bg-brand px-2 py-1 rounded text-xs font-bold text-white">★
+              <div class="absolute top-2 right-2 bg-brand px-2 py-1 rounded text-xs font-bold text-white">*
                 {{ Number(title.rating_score).toFixed(1) }}
               </div>
             </div>

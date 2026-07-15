@@ -33,7 +33,7 @@ onMounted(fetchHistory);
 
 <template>
   <div v-if="!isLoading && history.length > 0">
-    <h2 class="text-2xl font-bold mb-6 tracking-tight border-l-4 border-brand pl-3">Continue Watching</h2>
+    <h2 class="text-2xl font-bold mb-6 tracking-tight border-l-4 border-brand pl-3">Продолжить просмотр</h2>
 
     <div class="flex overflow-x-auto gap-6 pb-4 custom-scrollbar snap-x">
       <a v-for="item in history" :key="item.id" :href="getWatchLink(item)"
@@ -52,7 +52,7 @@ onMounted(fetchHistory);
           </div>
           <!-- Time Badge -->
           <div class="absolute bottom-2 right-2 bg-black/80 px-2 py-1 rounded text-xs font-bold text-white">
-            Resume at {{ formatTime(item.progress_ms) }}
+            Остановился на {{ formatTime(item.progress_ms) }}
           </div>
         </div>
 
@@ -60,10 +60,10 @@ onMounted(fetchHistory);
           <h3 class="text-sm font-bold text-white truncate">{{ item.title.name }}</h3>
           <p class="text-xs text-gray-400 mt-1 truncate">
             <template v-if="item.episode">
-              S{{ item.episode.season_number }} E{{ item.episode.episode_number }}: {{ item.episode.name || 'Episode' }}
+              Сезон {{ item.episode.season_number }} Серия {{ item.episode.episode_number }}: {{ item.episode.name || 'Серия' }}
             </template>
             <template v-else>
-              Movie
+              Фильм
             </template>
           </p>
         </div>

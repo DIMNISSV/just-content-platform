@@ -121,9 +121,7 @@ const handleCustomRate = (e) => {
                  class="absolute bottom-full right-0 mb-4 w-52 bg-gray-900/95 border border-gray-700 rounded-lg shadow-2xl overflow-hidden z-50 backdrop-blur-xl"
                  @mouseleave="showSettingsMenu = false">
 
-              <div class="px-4 py-2 text-[10px] font-black text-gray-500 uppercase tracking-widest bg-black/40">Speed
-                Control
-              </div>
+              <div class="px-4 py-2 text-[10px] font-black text-gray-500 uppercase tracking-widest bg-black/40">Скорость</div>
               <div class="p-3 border-b border-gray-800">
                 <div class="flex flex-wrap gap-1.5 mb-3">
                   <button v-for="r in [0.5, 1, 1.5, 2]" :key="r"
@@ -134,7 +132,7 @@ const handleCustomRate = (e) => {
                   </button>
                 </div>
                 <div class="flex items-center gap-2">
-                  <span class="text-[10px] text-gray-500 font-bold uppercase">Custom:</span>
+                  <span class="text-[10px] text-gray-500 font-bold uppercase">Другая:</span>
                   <input type="number" step="0.1" min="0.1" max="16"
                          :value="localRate"
                          @input="handleCustomRate"
@@ -144,7 +142,7 @@ const handleCustomRate = (e) => {
               </div>
 
               <div class="px-4 py-2 text-[10px] font-black text-gray-500 uppercase tracking-widest bg-black/40">
-                Quality
+                Качество
               </div>
               <div class="max-h-48 overflow-y-auto">
                 <button v-for="q in qualities" :key="q.variant_id"

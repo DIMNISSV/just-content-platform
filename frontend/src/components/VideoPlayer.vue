@@ -27,7 +27,7 @@ const getAudioFullName = (audioObj) => {
   if (!audioObj) return '';
   const provider = audioObj.provider ? `[${audioObj.provider}] ` : '';
   const author = audioObj.meta_info?.author ? `${audioObj.meta_info.author} ` : '';
-  const lang = audioObj.meta_info?.language ? `(${audioObj.meta_info.language.toUpperCase()})` : '(Dub)';
+  const lang = audioObj.meta_info?.language ? `(${audioObj.meta_info.language.toUpperCase()})` : '(Дубляж)';
   return `${provider}${author}${lang}`.trim();
 };
 
@@ -110,7 +110,7 @@ const handleDoubleClick = (e) => {
   if (!wrapperRef.value) return;
 
   const rect = wrapperRef.value.getBoundingClientRect();
-  const x = e.clientX - rect.left; // Позиция клика относительно левого края плеера
+  const x = e.clientX - rect.left;
   const width = rect.width;
 
   if (x < width / 3) {
@@ -149,7 +149,7 @@ const fetchManifest = async () => {
       await selectGroup(targetGroup);
     }
   } catch (e) {
-    error.value = "Failed to load video manifest.";
+    error.value = "Не удалось загрузить манифест воспроизведения.";
   } finally {
     isLoading.value = false;
   }
@@ -160,10 +160,9 @@ const processSources = (sources) => {
   const floatingAudios = [];
 
   sources.forEach(source => {
-    // 1. Обработка внешних плееров (Iframe)
     if (source.type === 'EXTERNAL_PLAYER') {
       groups[source.asset_id] = {
-        title: source.group_title || source.provider || 'External Source',
+        title: source.group_title || source.provider || 'Внешний плеер',
         author: source.provider,
         video: source,
         audios: []
@@ -173,7 +172,6 @@ const processSources = (sources) => {
 
     const gid = source.sync_group_id;
 
-    // 2. Если нет ID группы — это "плавающая" дорожка (например, из глобального плагина)
     if (!gid) {
       if (source.type === 'AUDIO' || source.type === 'SUBTITLE') {
         floatingAudios.push(source);
@@ -181,20 +179,17 @@ const processSources = (sources) => {
       return;
     }
 
-    // 3. Инициализация группы, если еще не создана
     if (!groups[gid]) {
       groups[gid] = {
-        title: source.group_title || 'Default',
+        title: source.group_title || 'Стандартная версия',
         author: source.group_author || '',
         video: null,
         audios: []
       };
     }
 
-    // 4. Распределение по типам внутри группы
     if (source.type === 'VIDEO') {
       groups[gid].video = source;
-      // Приоритет автора группы берем из видео-файла, если он там есть
       if (source.group_author) {
         groups[gid].author = source.group_author;
       }
@@ -203,11 +198,9 @@ const processSources = (sources) => {
     }
   });
 
-  // 5. Приклеиваем "плавающие" аудиодорожки ко всем валидным видеогруппам
   Object.values(groups).forEach(group => {
     if (group.video && group.video.type === 'VIDEO') {
       floatingAudios.forEach(fa => {
-        // Клонируем дорожку, чтобы не мутировать исходный объект
         group.audios.push({...fa, sync_group_id: group.video.sync_group_id});
       });
     }
@@ -263,21 +256,18 @@ const selectGroup = async (groupId) => {
   if (group.audios.length > 0) {
     let matchedAudio = null;
 
-    // Шаг 1: Точное совпадение из истории просмотров
     if (props.lastAudioTrackName) {
       matchedAudio = group.audios.find(a => getAudioFullName(a).toLowerCase() === props.lastAudioTrackName.toLowerCase());
     }
 
-    // Шаг 2 & 3: Фильтрация по коду языка и применение приоритетов
     if (!matchedAudio) {
       let availableAudios = group.audios;
 
-      // Жёсткий фильтр языка (если задан)
       if (props.languageCode) {
         const filtered = group.audios.filter(a =>
             (a.meta_info?.language || '').toLowerCase().includes(props.languageCode.toLowerCase())
         );
-        if (filtered.length > 0) availableAudios = filtered; // Применяем фильтр только если он не исключает ВСЕ дорожки
+        if (filtered.length > 0) availableAudios = filtered;
       }
 
       let voiceoversList = [];
@@ -287,7 +277,6 @@ const selectGroup = async (groupId) => {
       }
 
       for (const vo of voiceoversList) {
-        // Ищем подстроку ТОЛЬКО в авторе (author), а не в языке, для точного метчинга
         const found = availableAudios.find(a =>
             (a.meta_info?.author || '').toLowerCase().includes(vo.toLowerCase())
         );
@@ -297,7 +286,6 @@ const selectGroup = async (groupId) => {
         }
       }
 
-      // Фолбэк, если ничего не совпало
       if (!matchedAudio && availableAudios.length > 0) {
         matchedAudio = availableAudios[0];
       }
@@ -407,6 +395,7 @@ const changePlaybackRate = (rate) => {
     audioRef.value.playbackRate = newRate;
   }
 };
+
 const performSync = () => {
   if (!videoRef.value || !audioRef.value || !activeAudio.value) return;
 
@@ -418,7 +407,6 @@ const performSync = () => {
   }
   if (audio.readyState < 2) {
     if (!video.paused) {
-      console.log("SyncEngine: Audio is buffering, stalling video...");
       video.pause();
     }
     return;
@@ -432,13 +420,13 @@ const performSync = () => {
   const targetAudioTime = video.currentTime - offsetSeconds;
   const drift = Math.abs(audio.currentTime - targetAudioTime);
   if (drift > 0.25) {
-    console.log(`SyncEngine: Drift detected (${drift.toFixed(3)}s). Correcting...`);
     audio.currentTime = targetAudioTime;
   }
   if (audio.paused && !video.paused) {
-    audio.play().catch(e => console.warn("Audio play blocked by browser:", e));
+    audio.play().catch(e => console.warn("Аудио заблокировано браузером:", e));
   }
 };
+
 const startSyncEngine = () => {
   stopSyncEngine();
   syncInterval = setInterval(performSync, 250);
@@ -517,7 +505,6 @@ const handleFullscreenChange = () => {
   isFullscreen.value = !!document.fullscreenElement;
 };
 
-// --- Оценка озвучки (Track Group) ---
 const rateTrackGroup = async (score) => {
   if (trackRatingSubmitting.value || !activeGroupId.value) return;
   trackRatingSubmitting.value = true;
@@ -529,19 +516,18 @@ const rateTrackGroup = async (score) => {
       body: JSON.stringify({score})
     });
     if (res.ok) {
-      trackRatingMessage.value = 'Rated!';
+      trackRatingMessage.value = 'Сохранено!';
       setTimeout(() => trackRatingMessage.value = '', 3000);
     } else {
-      trackRatingMessage.value = 'Error';
+      trackRatingMessage.value = 'Ошибка';
     }
   } catch (e) {
-    trackRatingMessage.value = 'Error';
+    trackRatingMessage.value = 'Ошибка';
   } finally {
     trackRatingSubmitting.value = false;
   }
 };
 
-// --- Телеметрия ---
 const sendTelemetry = async () => {
   if (!videoRef.value || isNaN(videoRef.value.duration)) return;
   const currentMs = Math.floor(videoRef.value.currentTime * 1000);
@@ -551,7 +537,7 @@ const sendTelemetry = async () => {
 
   const currentQualityLabel = activeVideo.value?.qualities?.find(q => q.storage_path === activeVideo.value.active_path)?.label || null;
   const currentAudioAssetId = activeAudio.value ? activeAudio.value.asset_id : null;
-  const currentAudioTrackName = getAudioFullName(activeAudio.value); // Добавляем сохранение имени
+  const currentAudioTrackName = getAudioFullName(activeAudio.value);
 
   try {
     await fetch('/api/v1/player/telemetry/', {
@@ -562,7 +548,7 @@ const sendTelemetry = async () => {
         episode_id: props.episodeId || null,
         track_group_id: isNaN(tGroupId) ? null : tGroupId,
         audio_asset_id: currentAudioAssetId,
-        audio_track_name: currentAudioTrackName, // Отправляем в бэкенд
+        audio_track_name: currentAudioTrackName,
         quality_label: currentQualityLabel,
         progress_ms: currentMs,
         is_completed: isCompleted
@@ -717,12 +703,10 @@ const currentGroupAudios = computed(() => {
 </template>
 
 <style scoped>
-/* Прячем курсор, если контролы скрыты и видео проигрывается */
 .cursor-hidden {
   cursor: none;
 }
 
-/* Плавный переход для оверлея контролов */
 .pointer-events-none {
   transition: opacity 0.3s ease;
 }
