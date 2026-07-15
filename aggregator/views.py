@@ -1,15 +1,16 @@
 import logging
 
-from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ObjectDoesNotExist
 
 from .models import PluginProvider
 from .services import process_plugin_payload
 from .services.session_manager import SessionManager
+from .services.telemetry_processor import TelemetryProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -80,3 +81,17 @@ def player_session_heartbeat(request):
         }, status=status.HTTP_200_OK)
     except ObjectDoesNotExist:
         return Response({"error": "Session not found or expired"}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def player_session_telemetry(request):
+    session_token = request.data.get('session_token')
+    if not session_token:
+        return Response({"error": "session_token is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    response_data, status_code = TelemetryProcessor.process_session_telemetry(
+        session_token=session_token,
+        payload=request.data
+    )
+    return Response(response_data, status=status_code)
