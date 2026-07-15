@@ -23,6 +23,8 @@ class Command(BaseCommand):
 
         # Dumps
         parser.add_argument('--dump', type=str, help='Use file dump instead of API (e.g., films, serials, films/anime)')
+        parser.add_argument('--dry-run', action='store_true',
+                            help='Simulate dump synchronization without writing to DB')
 
         # Updating existing titles in DB
         parser.add_argument('--update-existing', action='store_true', help='Update existing titles in DB')
@@ -35,7 +37,8 @@ class Command(BaseCommand):
         parser.add_argument('--types', type=str, default='', help='Comma-separated Kodik content types for API')
         parser.add_argument('--sort', type=str, default='updated_at',
                             help='Sort field for API (e.g., updated_at, year)')
-        parser.add_argument('--order', type=str, default='desc', help='Sort order for API (asc, desc)')
+        parser.add_argument('--order', type=str, default='desc',
+                            help='Sort order for API (asc, desc)')
 
         # State and Limits
         parser.add_argument('--max-pages', type=int, default=0, help='Max pages to process (API only)')
@@ -98,7 +101,8 @@ class Command(BaseCommand):
                 dump_name=dump_name,
                 resume=options['resume'],
                 max_items=options['max_items'],
-                state_key=state_key
+                state_key=state_key,
+                dry_run=options['dry_run']
             )
         else:
             client = KodikListClient(token=token)

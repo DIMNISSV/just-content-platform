@@ -140,9 +140,12 @@ class KodikSyncOrchestrator:
         return success_count, error_count
 
     def run_sync_dump(self, dump_name: str, resume: bool = False, max_items: int = 0,
-                      state_key: str = 'dump_sync_default') -> tuple[int, int]:
+                      state_key: str = 'dump_sync_default', dry_run: bool = False) -> tuple[int, int]:
         logger.info(
-            f"Starting Dump synchronization from {dump_name}. Resume: {resume}, Max Items: {max_items}, State Key: {state_key}")
+            f"Starting Dump synchronization from {dump_name}. Resume: {resume}, Max Items: {max_items}, State Key: {state_key}, Dry Run: {dry_run}")
+
+        if dry_run:
+            logger.info("[DRY-RUN] Simulation mode active. No database changes will be made.")
 
         state_obj, _ = KodikSyncState.objects.get_or_create(key=state_key)
         start_index = state_obj.state_data.get('last_index', 0) if resume else 0
@@ -154,6 +157,7 @@ class KodikSyncOrchestrator:
         file_path = self.client.download_dump(dump_name)
 
         success_count, error_count, items_processed = 0, 0, 0
+        titles_to_create = 0
 
         try:
             logger.info("Loading dump JSON into memory...")
@@ -179,16 +183,31 @@ class KodikSyncOrchestrator:
                 if shiki_id: query |= Q(shiki_id=shiki_id)
                 if mdl_id: query |= Q(mdl_id=mdl_id)
 
-                if query and KodikDumpProcessedID.objects.filter(query).exists():
+                if not query:
                     items_processed += 1
                     continue
 
-                # Fast local save of the dump element
-                succ, err = self._process_item(item)
-                success_count += succ
-                error_count += err
+                # Filter check (same as real process)
+                is_processed = KodikDumpProcessedID.objects.filter(query).exists()
+                is_already_in_db = Title.objects.filter(query).exists()
 
-                if query:
+                if is_processed or is_already_in_db:
+                    items_processed += 1
+                    continue
+
+                if dry_run:
+                    title_name = item.get('title', 'Unknown')
+                    titles_to_create += 1
+                    logger.info(f"[DRY-RUN] Title {title_name} would be created")
+                    logger.info(
+                        f"[DRY-RUN] Celery task deep_sync_kodik_title_task would be dispatched for episodes of this series")
+                    logger.info(f"[DRY-RUN] Entry in KodikDumpProcessedID would be created for IDs: {ext_ids}")
+                else:
+                    # Real execution
+                    succ, err = self._process_item(item)
+                    success_count += succ
+                    error_count += err
+
                     from kodik_plugin.tasks import deep_sync_kodik_title_task
                     deep_sync_kodik_title_task.delay(
                         kp_id=kp_id,
@@ -207,8 +226,15 @@ class KodikSyncOrchestrator:
                 items_processed += 1
 
                 if items_processed % 100 == 0:
-                    state_obj.state_data['last_index'] = i + 1
-                    state_obj.save(update_fields=['state_data', 'updated_at'])
+                    if dry_run:
+                        logger.info(f"[DRY-RUN] KodikSyncState would be updated (index: {i})")
+                    else:
+                        state_obj.state_data['last_index'] = i + 1
+                        state_obj.save(update_fields=['state_data', 'updated_at'])
+
+            if dry_run:
+                logger.info(f"Dry run complete. Total titles to be created: {titles_to_create}")
+                return titles_to_create, 0
 
             state_obj.state_data['last_index'] = start_index + items_processed
             state_obj.save(update_fields=['state_data', 'updated_at'])
