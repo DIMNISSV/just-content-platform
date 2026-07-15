@@ -12,6 +12,8 @@ from rest_framework.decorators import api_view, action, permission_classes
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser, AllowAny
 from rest_framework.response import Response
 
+from aggregator.models import ExternalContentRegistry
+from aggregator.services.session_manager import SessionManager
 from aggregator.tasks import enqueue_title_refresh
 from media.models import Asset, RawMediaFile, AssetVariant, TranscodingPreset
 from media.tasks import extract_stream_task
@@ -445,7 +447,8 @@ def recommendations(request):
             id__in=watched_title_ids
         ).exclude(
             id__in=[t.id for t in recommended]
-        ).distinct().order_by('-rating_score')[:pad_amount]
+        ).distinct().order_by(
+            '-rating_score')[:pad_amount]
         recommended = list(recommended) + list(extra_titles)
 
     if len(recommended) < 10:
@@ -498,8 +501,32 @@ class WatchView(DetailView):
         context['language_code'] = 'rus'
         context['preferred_voiceovers'] = '[]'
         context['auto_skip'] = 'false'
+
+        # Plugin and Session logic
+        context['session_token'] = ''
+        context['plugin_script_url'] = ''
+
         title_obj = self.object
         if self.request.user.is_authenticated:
+            # Find active plugin that registered this content
+            plugin = ExternalContentRegistry.objects.filter(
+                title=title_obj,
+                episode__isnull=True,
+                plugin__is_active=True
+            ).select_related('plugin').first()
+
+            if plugin:
+                context['plugin_script_url'] = plugin.plugin.client_script_url or ''
+
+                # Create viewing session
+                ctype = ContentType.objects.get_for_model(Title)
+                session = SessionManager.create_session(
+                    user=self.request.user,
+                    content_type=ctype,
+                    object_id=title_obj.id
+                )
+                context['session_token'] = str(session.id)
+
             pref, _ = UserPreference.objects.get_or_create(user=self.request.user)
             context['language_code'] = pref.language_code
             context['preferred_voiceovers'] = json.dumps(pref.preferred_voiceovers)
@@ -585,7 +612,30 @@ class EpisodeWatchView(DetailView):
         context['language_code'] = 'rus'
         context['preferred_voiceovers'] = '[]'
         context['auto_skip'] = 'false'
+
+        # Plugin and Session logic
+        context['session_token'] = ''
+        context['plugin_script_url'] = ''
+
         if self.request.user.is_authenticated:
+            # Find active plugin that registered this episode
+            plugin = ExternalContentRegistry.objects.filter(
+                episode=self.object,
+                plugin__is_active=True
+            ).select_related('plugin').first()
+
+            if plugin:
+                context['plugin_script_url'] = plugin.plugin.client_script_url or ''
+
+                # Create viewing session
+                ctype = ContentType.objects.get_for_model(Episode)
+                session = SessionManager.create_session(
+                    user=self.request.user,
+                    content_type=ctype,
+                    object_id=self.object.id
+                )
+                context['session_token'] = str(session.id)
+
             pref, _ = UserPreference.objects.get_or_create(user=self.request.user)
             context['language_code'] = pref.language_code
             context['preferred_voiceovers'] = json.dumps(pref.preferred_voiceovers)
