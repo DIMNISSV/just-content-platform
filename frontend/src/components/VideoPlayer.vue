@@ -1,6 +1,7 @@
 <script setup>
 import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue';
-import Hls from 'hls.js';
+import {useSyncPlayer} from '../composables/useSyncPlayer';
+import {usePlayerTelemetry} from '../composables/usePlayerTelemetry';
 
 import PlayerTopBar from './player/PlayerTopBar.vue';
 import PlayerBottomBar from './player/PlayerBottomBar.vue';
@@ -31,41 +32,54 @@ const getAudioFullName = (audioObj) => {
   return `${provider}${author}${lang}`.trim();
 };
 
-const videoRef = ref(null);
 const autoSkipTriggered = ref(false);
-const audioRef = ref(null);
 const wrapperRef = ref(null);
-
-const isLoading = ref(true);
-const manifest = ref(null);
-const error = ref(null);
 
 const groupedSources = ref({});
 const activeGroupId = ref(null);
 const activeVideo = ref(null);
 const activeAudio = ref(null);
 const hasResumed = ref(false);
-const nextEpisodeId = ref(null);
 
-// State для UI контролов
-const isPlaying = ref(false);
-const currentTime = ref(0);
-const duration = ref(0);
-const volume = ref(1);
-const isMuted = ref(false);
 const showControls = ref(true);
 const isFullscreen = ref(false);
-const playbackRate = ref(1);
 
-// State для рейтинга озвучки
 const trackRatingMessage = ref('');
 const trackRatingSubmitting = ref(false);
 
-let hlsVideo = null;
-let hlsAudio = null;
-let syncInterval = null;
-let telemetryInterval = null;
 let controlsTimeout = null;
+
+const {
+  videoRef,
+  audioRef,
+  isPlaying,
+  currentTime,
+  duration,
+  volume,
+  isMuted,
+  playbackRate,
+  initHls,
+  destroyHls,
+  performSync,
+  startSyncEngine,
+  stopSyncEngine,
+  togglePlay,
+  skip,
+  seek,
+  setVolume,
+  toggleMute,
+  changePlaybackRate
+} = useSyncPlayer();
+
+const {
+  isLoading,
+  error,
+  nextEpisodeId,
+  fetchManifest,
+  sendTelemetry,
+  startTelemetry,
+  stopTelemetry
+} = usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudio, videoRef, getAudioFullName);
 
 const resetControlsTimer = () => {
   showControls.value = true;
@@ -126,32 +140,20 @@ const onRateChange = () => {
   if (videoRef.value) {
     const newRate = videoRef.value.playbackRate;
     if (playbackRate.value !== newRate) {
-      playbackRate.value = newRate;
-      if (audioRef.value) {
-        audioRef.value.playbackRate = newRate;
-      }
+      changePlaybackRate(newRate);
     }
   }
 };
 
-const fetchManifest = async () => {
-  isLoading.value = true;
-  try {
-    const response = await fetch(`/api/v1/player/manifest/${props.contentType}/${props.contentId}/`);
-    manifest.value = await response.json();
-    nextEpisodeId.value = manifest.value.next_episode_id || null;
-    processSources(manifest.value.sources);
+const loadPlayerManifestAndSources = async () => {
+  const sources = await fetchManifest();
+  processSources(sources);
 
-    const groupKeys = Object.keys(groupedSources.value);
-    if (groupKeys.length > 0) {
-      const rememberedId = groupKeys.find(k => String(k) === String(props.lastTrackGroup));
-      const targetGroup = rememberedId || groupKeys[0];
-      await selectGroup(targetGroup);
-    }
-  } catch (e) {
-    error.value = "Не удалось загрузить манифест воспроизведения.";
-  } finally {
-    isLoading.value = false;
+  const groupKeys = Object.keys(groupedSources.value);
+  if (groupKeys.length > 0) {
+    const rememberedId = groupKeys.find(k => String(k) === String(props.lastTrackGroup));
+    const targetGroup = rememberedId || groupKeys[0];
+    await selectGroup(targetGroup);
   }
 };
 
@@ -207,38 +209,6 @@ const processSources = (sources) => {
   });
 
   groupedSources.value = {...groups};
-};
-
-const initHls = (mediaElement, source, hlsInstanceVar, isVideo = false) => {
-  if (!mediaElement) return null;
-  if (hlsInstanceVar) hlsInstanceVar.destroy();
-
-  const targetPath = source.active_path || source.storage_path;
-  const startSec = (isVideo && !hasResumed.value && props.startProgress) ? parseInt(props.startProgress) / 1000 : -1;
-
-  if (Hls.isSupported() && targetPath.endsWith('.m3u8')) {
-    const config = {enableWorker: true};
-    if (startSec > 0) {
-      config.startPosition = startSec;
-      hasResumed.value = true;
-    }
-    const hls = new Hls(config);
-    hls.loadSource(targetPath);
-    hls.attachMedia(mediaElement);
-    hls.on(Hls.Events.ERROR, (event, data) => {
-      if (data.fatal) console.error("HLS Fatal Error:", data);
-    });
-    return hls;
-  } else {
-    mediaElement.src = targetPath;
-    if (startSec > 0) {
-      mediaElement.addEventListener('loadedmetadata', () => {
-        mediaElement.currentTime = startSec;
-        hasResumed.value = true;
-      }, {once: true});
-    }
-    return null;
-  }
 };
 
 const selectGroup = async (groupId) => {
@@ -311,23 +281,24 @@ const selectGroup = async (groupId) => {
     activeAudio.value.active_path = activeAudio.value.qualities[0].storage_path;
   }
 
-  if (activeVideo.value?.type === 'VIDEO') startSyncEngine();
+  if (activeVideo.value?.type === 'VIDEO') startSyncEngine(activeAudio.value);
   else stopSyncEngine();
 };
 
 watch(videoRef, (newEl) => {
   if (newEl && activeVideo.value && activeVideo.value.type === 'VIDEO') {
-    hlsVideo = initHls(newEl, activeVideo.value, hlsVideo, true);
+    initHls(newEl, activeVideo.value, true, props.startProgress, hasResumed.value);
     newEl.volume = volume.value;
     newEl.muted = isMuted.value;
     newEl.playbackRate = playbackRate.value;
     newEl.load();
+    hasResumed.value = true;
   }
 });
 
 watch(audioRef, (newEl) => {
   if (newEl && activeAudio.value) {
-    hlsAudio = initHls(newEl, activeAudio.value, hlsAudio, false);
+    initHls(newEl, activeAudio.value, false, props.startProgress, hasResumed.value);
     newEl.volume = volume.value;
     newEl.muted = isMuted.value;
     newEl.playbackRate = playbackRate.value;
@@ -358,13 +329,12 @@ const selectAudio = async (audioSource) => {
   await nextTick();
 
   if (activeAudio.value) {
-    hlsAudio = initHls(audioRef.value, activeAudio.value, hlsAudio, false);
+    initHls(audioRef.value, activeAudio.value, false, props.startProgress, hasResumed.value);
     audioRef.value.volume = volume.value;
     audioRef.value.muted = isMuted.value;
     audioRef.value.playbackRate = playbackRate.value;
-  } else if (hlsAudio) {
-    hlsAudio.destroy();
-    hlsAudio = null;
+  } else {
+    initHls(audioRef.value, null, false);
   }
 
   videoRef.value.currentTime = cTime;
@@ -376,102 +346,15 @@ const changeVideoQuality = async (path) => {
   const cTime = videoRef.value.currentTime;
   const isP = videoRef.value.paused;
   activeVideo.value.active_path = path;
-  hlsVideo = initHls(videoRef.value, activeVideo.value, hlsVideo, true);
+  initHls(videoRef.value, activeVideo.value, true, props.startProgress, hasResumed.value);
   videoRef.value.playbackRate = playbackRate.value;
   videoRef.value.currentTime = cTime;
   if (!isP) videoRef.value.play().catch(e => console.warn(e));
 };
 
-const changePlaybackRate = (rate) => {
-  const newRate = parseFloat(rate);
-  if (isNaN(newRate)) return;
-
-  playbackRate.value = newRate;
-
-  if (videoRef.value) {
-    videoRef.value.playbackRate = newRate;
-  }
-  if (audioRef.value) {
-    audioRef.value.playbackRate = newRate;
-  }
-};
-
-const performSync = () => {
-  if (!videoRef.value || !audioRef.value || !activeAudio.value) return;
-
-  const video = videoRef.value;
-  const audio = audioRef.value;
-  if (video.paused || video.waiting || video.seeking) {
-    if (!audio.paused) audio.pause();
-    return;
-  }
-  if (audio.readyState < 2) {
-    if (!video.paused) {
-      video.pause();
-    }
-    return;
-  } else {
-    if (video.paused && isPlaying.value) {
-      video.play().catch(() => {
-      });
-    }
-  }
-  const offsetSeconds = activeAudio.value.offset_ms / 1000;
-  const targetAudioTime = video.currentTime - offsetSeconds;
-  const drift = Math.abs(audio.currentTime - targetAudioTime);
-  if (drift > 0.25) {
-    audio.currentTime = targetAudioTime;
-  }
-  if (audio.paused && !video.paused) {
-    audio.play().catch(e => console.warn("Аудио заблокировано браузером:", e));
-  }
-};
-
-const startSyncEngine = () => {
-  stopSyncEngine();
-  syncInterval = setInterval(performSync, 250);
-};
-
-const stopSyncEngine = () => {
-  if (syncInterval) clearInterval(syncInterval);
-};
-
-const togglePlay = () => {
-  if (!videoRef.value) return;
-  if (videoRef.value.paused) videoRef.value.play();
-  else videoRef.value.pause();
-};
-
 const toggleFullscreen = () => {
   if (!document.fullscreenElement) wrapperRef.value.requestFullscreen().catch(err => console.error(err));
   else document.exitFullscreen();
-};
-
-const skip = (seconds) => {
-  if (videoRef.value) {
-    videoRef.value.currentTime += seconds;
-    performSync();
-  }
-};
-
-const seek = (timeInSeconds) => {
-  if (videoRef.value) {
-    videoRef.value.currentTime = timeInSeconds;
-    performSync();
-  }
-};
-
-const setVolume = (val) => {
-  volume.value = val;
-  if (videoRef.value) videoRef.value.volume = val;
-  if (audioRef.value) audioRef.value.volume = val;
-  isMuted.value = val === 0;
-};
-
-const toggleMute = () => {
-  isMuted.value = !isMuted.value;
-  if (videoRef.value) videoRef.value.muted = isMuted.value;
-  if (audioRef.value) audioRef.value.muted = isMuted.value;
 };
 
 const onTimeUpdate = () => {
@@ -528,49 +411,8 @@ const rateTrackGroup = async (score) => {
   }
 };
 
-const sendTelemetry = async () => {
-  if (!videoRef.value || isNaN(videoRef.value.duration)) return;
-  const currentMs = Math.floor(videoRef.value.currentTime * 1000);
-  const dur = videoRef.value.duration || 0;
-  const isCompleted = dur > 0 && (videoRef.value.currentTime / dur) > 0.95;
-  const tGroupId = parseInt(activeGroupId.value);
-
-  const currentQualityLabel = activeVideo.value?.qualities?.find(q => q.storage_path === activeVideo.value.active_path)?.label || null;
-  const currentAudioAssetId = activeAudio.value ? activeAudio.value.asset_id : null;
-  const currentAudioTrackName = getAudioFullName(activeAudio.value);
-
-  try {
-    await fetch('/api/v1/player/telemetry/', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-CSRFToken': props.csrfToken},
-      body: JSON.stringify({
-        title_id: props.titleId,
-        episode_id: props.episodeId || null,
-        track_group_id: isNaN(tGroupId) ? null : tGroupId,
-        audio_asset_id: currentAudioAssetId,
-        audio_track_name: currentAudioTrackName,
-        quality_label: currentQualityLabel,
-        progress_ms: currentMs,
-        is_completed: isCompleted
-      })
-    });
-  } catch (e) {
-  }
-};
-
-const startTelemetry = () => {
-  if (telemetryInterval) clearInterval(telemetryInterval);
-  telemetryInterval = setInterval(() => {
-    if (videoRef.value && !videoRef.value.paused) sendTelemetry();
-  }, 10000);
-};
-
-const stopTelemetry = () => {
-  if (telemetryInterval) clearInterval(telemetryInterval);
-};
-
 onMounted(() => {
-  fetchManifest();
+  loadPlayerManifestAndSources();
   startTelemetry();
   document.addEventListener('fullscreenchange', handleFullscreenChange);
   window.addEventListener('keydown', handleKeyDown);
@@ -582,8 +424,7 @@ onBeforeUnmount(() => {
   sendTelemetry();
   document.removeEventListener('fullscreenchange', handleFullscreenChange);
   window.removeEventListener('keydown', handleKeyDown);
-  if (hlsVideo) hlsVideo.destroy();
-  if (hlsAudio) hlsAudio.destroy();
+  destroyHls();
 });
 
 const currentGroupAudios = computed(() => {
@@ -625,8 +466,8 @@ const currentGroupAudios = computed(() => {
           @loadedmetadata="onLoadedMetadata"
           @play="onPlay"
           @pause="onPause"
-          @seeking="performSync"
-          @waiting="performSync"
+          @seeking="performSync(activeAudio)"
+          @waiting="performSync(activeAudio)"
       ></video>
 
       <iframe
