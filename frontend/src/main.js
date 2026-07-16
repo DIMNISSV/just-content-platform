@@ -10,7 +10,7 @@ import TitleRating from './components/TitleRating.vue';
 import UploadWizard from './components/admin/UploadWizard.vue';
 import FavoriteButton from "./components/FavoriteButton.vue";
 import ProfileDashboard from "./components/ProfileDashboard.vue";
-import SimilarTitles from "./components/SimilarTitles.vue";
+import SimilarTitles from './components/SimilarTitles.vue';
 import TaxonomyManager from "./components/admin/TaxonomyManager.vue";
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -67,7 +67,10 @@ document.addEventListener('DOMContentLoaded', () => {
             languageCode: playerMount.dataset.languageCode,
             preferredVoiceovers: playerMount.dataset.preferredVoiceovers,
             autoSkip: playerMount.dataset.autoSkip,
-            csrfToken: playerMount.dataset.csrf
+            csrfToken: playerMount.dataset.csrf,
+            // Добавляем передачу сессии и скрипта из HTML в Vue
+            sessionToken: playerMount.dataset.sessionToken,
+            pluginScriptUrl: playerMount.dataset.pluginScriptUrl
         }).mount('#vue-player-mount');
     }
 
