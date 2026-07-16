@@ -25,49 +25,76 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
         }
     };
 
-    const sendTelemetry = async () => {
-        if (!videoRef.value || isNaN(videoRef.value.duration)) return;
-        const currentMs = Math.floor(videoRef.value.currentTime * 1000);
-        const dur = videoRef.value.duration || 0;
-        const isCompleted = dur > 0 && (videoRef.value.currentTime / dur) > 0.95;
-        const tGroupId = parseInt(activeGroupId.value);
-
-        const currentQualityLabel = activeVideo.value?.qualities?.find(
-            q => q.storage_path === activeVideo.value.active_path
-        )?.label || null;
-        const currentAudioAssetId = activeAudio.value ? activeAudio.value.asset_id : null;
-        const currentAudioTrackName = getAudioFullName(activeAudio.value);
-
-        const endpoint = props.episodeId
-            ? '/api/v1/player/episode-telemetry/'
-            : '/api/v1/player/telemetry/';
-
-        const payload = {
-            progress_ms: currentMs,
-            is_completed: isCompleted,
-            track_group_id: isNaN(tGroupId) ? null : tGroupId,
-            audio_asset_id: currentAudioAssetId,
-            audio_track_name: currentAudioTrackName,
-            quality_label: currentQualityLabel,
+    // ОБНОВЛЕННАЯ ФУНКЦИЯ: теперь принимает опциональный payload
+    const sendTelemetry = async (externalPayload = null) => {
+        let payload = {};
+        let endpoint = '';
+        let headers = {
+            'Content-Type': 'application/json',
         };
 
-        if (!props.episodeId) {
-            payload.title_id = props.titleId;
+        if (externalPayload) {
+            // РЕЖИМ ПЛАГИНА: используем данные плагина и сессионный токен
+            if (!props.sessionToken) {
+                console.warn("Plugin tried to send telemetry, but no session token available.");
+                return;
+            }
+            payload = {
+                ...externalPayload,
+                session_token: props.sessionToken
+            };
+            endpoint = '/api/v1/player/session-telemetry/';
+            // Для сессионного эндпоинта CSRF не обязателен, так как токен сессии сам по себе является секретом
         } else {
-            payload.episode_id = props.episodeId;
+            // АВТОМАТИЧЕСКИЙ РЕЖИМ: собираем данные из DOM
+            if (!videoRef.value || isNaN(videoRef.value.duration)) return;
+
+            const currentMs = Math.floor(videoRef.value.currentTime * 1000);
+            const dur = videoRef.value.duration || 0;
+            const isCompleted = dur > 0 && (videoRef.value.currentTime / dur) > 0.95;
+            const tGroupId = parseInt(activeGroupId.value);
+
+            const currentQualityLabel = activeVideo.value?.qualities?.find(
+                q => q.storage_path === activeVideo.value.active_path
+            )?.label || null;
+            const currentAudioAssetId = activeAudio.value ? activeAudio.value.asset_id : null;
+            const currentAudioTrackName = getAudioFullName(activeAudio.value);
+
+            endpoint = props.episodeId
+                ? '/api/v1/player/episode-telemetry/'
+                : '/api/v1/player/telemetry/';
+
+            payload = {
+                progress_ms: currentMs,
+                is_completed: isCompleted,
+                track_group_id: isNaN(tGroupId) ? null : tGroupId,
+                audio_asset_id: currentAudioAssetId,
+                audio_track_name: currentAudioTrackName,
+                quality_label: currentQualityLabel,
+            };
+
+            if (!props.episodeId) {
+                payload.title_id = props.titleId;
+            } else {
+                payload.episode_id = props.episodeId;
+            }
+
+            headers['X-CSRFToken'] = props.csrfToken;
         }
 
         try {
-            await fetch(endpoint, {
+            const response = await fetch(endpoint, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': props.csrfToken
-                },
+                headers: headers,
                 body: JSON.stringify(payload)
             });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                console.error(`Telemetry failed (${endpoint}):`, errData);
+            }
         } catch (e) {
-            // Игнорируем сетевые сбои телеметрии
+            console.error("Network error during telemetry:", e);
         }
     };
 
@@ -97,16 +124,14 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
     const startTelemetry = () => {
         stopTelemetry();
 
-        // Telemetry interval (every 10 seconds if playing)
         telemetryInterval = setInterval(() => {
             if (videoRef.value && !videoRef.value.paused) {
                 sendTelemetry();
             }
         }, 10000);
 
-        // Heartbeat interval (every 10 minutes to keep session alive)
         if (props.sessionToken) {
-            sendHeartbeat(); // Initial heartbeat
+            sendHeartbeat();
             heartbeatInterval = setInterval(sendHeartbeat, 10 * 60 * 1000);
         }
     };
