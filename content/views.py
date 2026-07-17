@@ -5,6 +5,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 from django.db import transaction
+from django.db.models import Max
 from django.shortcuts import render, get_object_or_404
 from django.views.generic import DetailView, TemplateView
 from rest_framework import viewsets, filters, status, mixins
@@ -429,12 +430,21 @@ class HomeView(TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-
-        # Интеграция динамического тренда из Redis
         context['trending'] = get_trending_titles(limit=12)
+        context['new_movies'] = Title.objects.filter(
+            type=Title.Type.MOVIE
+        ).order_by('-created_at')[:6]
+        from datetime import timedelta
+        from django.utils import timezone
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        new_series_qs = Title.objects.filter(
+            type=Title.Type.SERIES,
+            episodes__created_at__gte=thirty_days_ago
+        ).annotate(
+            last_episode_date=Max('episodes__created_at')
+        ).order_by('-last_episode_date', '-release_year').distinct()[:6]
+        context['new_series'] = new_series_qs
 
-        context['new_movies'] = Title.objects.filter(type=Title.Type.MOVIE).order_by('-created_at')[:6]
-        context['new_series'] = Title.objects.filter(type=Title.Type.SERIES).order_by('-created_at')[:6]
         return context
 
 

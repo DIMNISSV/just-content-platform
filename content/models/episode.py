@@ -13,6 +13,7 @@ class Episode(models.Model):
     description = models.TextField(blank=True, verbose_name='Описание')
     metadata_priority_level = models.IntegerField(default=0, help_text="Приоритет последнего обновившего источника",
                                                   verbose_name='Приоритет метаданных')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
 
     class Meta:
         ordering = ['season_number', 'episode_number']
