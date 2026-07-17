@@ -9,6 +9,19 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
     let telemetryInterval = null;
     let heartbeatInterval = null;
 
+    const getOrCreateGuestId = () => {
+        let gId = localStorage.getItem('jcp_guest_id');
+        if (!gId) {
+            try {
+                gId = crypto.randomUUID();
+            } catch (e) {
+                gId = 'guest-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now().toString(36);
+            }
+            localStorage.setItem('jcp_guest_id', gId);
+        }
+        return gId;
+    };
+
     const fetchManifest = async () => {
         isLoading.value = true;
         try {
@@ -28,7 +41,6 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
     const sendTelemetry = async (externalPayload = null) => {
         let payload = {};
         let endpoint = '';
-        // Всегда добавляем CSRF токен, если он есть, для предотвращения 403
         const headers = {
             'Content-Type': 'application/json',
         };
@@ -71,6 +83,7 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
                 audio_asset_id: currentAudioAssetId,
                 audio_track_name: currentAudioTrackName,
                 quality_label: currentQualityLabel,
+                guest_id: getOrCreateGuestId()
             };
 
             if (!props.episodeId) {

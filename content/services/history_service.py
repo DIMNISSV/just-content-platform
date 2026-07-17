@@ -9,25 +9,33 @@ def update_episode_progress(
         track_group=None,
         last_audio_asset_id=None,
         last_audio_track_name=None,
-        last_quality_label=None
+        last_quality_label=None,
+        guest_id=None
 ) -> tuple[EpisodeWatchHistory, WatchHistory]:
-    """
-    Saves or updates the progress of a specific episode for a user.
-    Also synchronizes the parent Title's WatchHistory to update the
-    global "Continue watching" entry.
-    """
+    lookup_episode = {}
+    lookup_title = {}
+
+    if user and user.is_authenticated:
+        lookup_episode['user'] = user
+        lookup_title['user'] = user
+    elif guest_id:
+        lookup_episode['guest_id'] = guest_id
+        lookup_title['guest_id'] = guest_id
+    else:
+        raise ValueError("Either user or guest_id must be provided to update watch history.")
+
+    lookup_episode['episode'] = episode
     episode_history, _ = EpisodeWatchHistory.objects.update_or_create(
-        user=user,
-        episode=episode,
+        **lookup_episode,
         defaults={
             'progress_ms': progress_ms,
             'is_completed': is_completed,
         }
     )
 
+    lookup_title['title'] = episode.title
     title_history, _ = WatchHistory.objects.update_or_create(
-        user=user,
-        title=episode.title,
+        **lookup_title,
         defaults={
             'episode': episode,
             'track_group': track_group,
@@ -50,15 +58,21 @@ def update_title_progress(
         track_group=None,
         last_audio_asset_id=None,
         last_audio_track_name=None,
-        last_quality_label=None
+        last_quality_label=None,
+        guest_id=None
 ) -> WatchHistory:
-    """
-    Saves or updates the progress of a standalone title (e.g., Movie)
-    for a user.
-    """
+    lookup_title = {}
+
+    if user and user.is_authenticated:
+        lookup_title['user'] = user
+    elif guest_id:
+        lookup_title['guest_id'] = guest_id
+    else:
+        raise ValueError("Either user or guest_id must be provided to update watch history.")
+
+    lookup_title['title'] = title
     title_history, _ = WatchHistory.objects.update_or_create(
-        user=user,
-        title=title,
+        **lookup_title,
         defaults={
             'episode': None,
             'track_group': track_group,

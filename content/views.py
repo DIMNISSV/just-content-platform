@@ -282,9 +282,13 @@ def player_manifest(request, content_type_str, object_id):
 
 @api_view(['POST'])
 def player_telemetry(request):
-    if not request.user.is_authenticated:
-        return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
     data = request.data
+    guest_id = data.get('guest_id')
+    user = request.user if request.user.is_authenticated else None
+
+    if not user and not guest_id:
+        return Response({"error": "Unauthorized or missing guest_id"}, status=status.HTTP_401_UNAUTHORIZED)
+
     title_id = data.get('title_id')
     if not title_id:
         return Response({"error": "title_id is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -314,42 +318,43 @@ def player_telemetry(request):
         try:
             episode = Episode.objects.get(id=episode_id)
             episode_history, title_history = update_episode_progress(
-                user=request.user,
+                user=user,
                 episode=episode,
                 progress_ms=progress_ms,
                 is_completed=is_completed,
                 track_group=track_group,
                 last_audio_asset_id=audio_asset_id,
                 last_audio_track_name=audio_track_name,
-                last_quality_label=quality_label
+                last_quality_label=quality_label,
+                guest_id=guest_id
             )
             return Response({"status": "saved", "progress_ms": episode_history.progress_ms})
         except Episode.DoesNotExist:
             return Response({"error": "Episode not found"}, status=status.HTTP_404_NOT_FOUND)
     else:
         title_history = update_title_progress(
-            user=request.user,
+            user=user,
             title=title,
             progress_ms=progress_ms,
             is_completed=is_completed,
             track_group=track_group,
             last_audio_asset_id=audio_asset_id,
             last_audio_track_name=audio_track_name,
-            last_quality_label=quality_label
+            last_quality_label=quality_label,
+            guest_id=guest_id
         )
         return Response({"status": "saved", "progress_ms": title_history.progress_ms})
 
 
 @api_view(['POST'])
 def episode_player_telemetry(request):
-    """
-    Dedicated endpoint for capturing single-episode watch progress.
-    Can be used in future extensions by external plugins.
-    """
-    if not request.user.is_authenticated:
-        return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
-
     data = request.data
+    guest_id = data.get('guest_id')
+    user = request.user if request.user.is_authenticated else None
+
+    if not user and not guest_id:
+        return Response({"error": "Unauthorized or missing guest_id"}, status=status.HTTP_401_UNAUTHORIZED)
+
     episode_id = data.get('episode_id')
     if not episode_id:
         return Response({"error": "episode_id is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -376,14 +381,15 @@ def episode_player_telemetry(request):
 
     from content.services.history_service import update_episode_progress
     episode_history, title_history = update_episode_progress(
-        user=request.user,
+        user=user,
         episode=episode,
         progress_ms=progress_ms,
         is_completed=is_completed,
         track_group=track_group,
         last_audio_asset_id=audio_asset_id,
         last_audio_track_name=audio_track_name,
-        last_quality_label=quality_label
+        last_quality_label=quality_label,
+        guest_id=guest_id
     )
 
     return Response({
