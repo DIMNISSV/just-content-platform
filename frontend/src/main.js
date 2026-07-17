@@ -13,7 +13,39 @@ import ProfileDashboard from "./components/ProfileDashboard.vue";
 import SimilarTitles from './components/SimilarTitles.vue';
 import TaxonomyManager from "./components/admin/TaxonomyManager.vue";
 
-document.addEventListener('DOMContentLoaded', () => {
+function getCsrfToken() {
+    const match = document.cookie.match(new RegExp('(^| )csrftoken=([^;]+)'));
+    return match ? match[2] : '';
+}
+
+async function handleGuestMerge() {
+    const guestId = localStorage.getItem('jcp_guest_id');
+    if (!guestId) return;
+
+    try {
+        const response = await fetch('/api/v1/recommendations/merge-guest/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: JSON.stringify({guest_id: guestId})
+        });
+
+        if (response.ok) {
+            console.log("Guest profile merged successfully");
+            localStorage.removeItem('jcp_guest_id');
+        } else if (response.status === 401 || response.status === 403) {
+            // User is not authenticated, keep the guest ID
+        }
+    } catch (e) {
+        console.error("Error during guest profile merge:", e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await handleGuestMerge();
+
     const favoriteMounts = document.querySelectorAll('.vue-favorite-button');
     favoriteMounts.forEach(mount => {
         createApp(FavoriteButton, {
@@ -68,7 +100,6 @@ document.addEventListener('DOMContentLoaded', () => {
             preferredVoiceovers: playerMount.dataset.preferredVoiceovers,
             autoSkip: playerMount.dataset.autoSkip,
             csrfToken: playerMount.dataset.csrf,
-            // Добавляем передачу сессии и скрипта из HTML в Vue
             sessionToken: playerMount.dataset.sessionToken,
             pluginScriptUrl: playerMount.dataset.pluginScriptUrl
         }).mount('#vue-player-mount');
