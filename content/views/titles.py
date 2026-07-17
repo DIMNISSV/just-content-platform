@@ -1,8 +1,7 @@
-from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 from django.db.models import Exists, OuterRef, Value, BooleanField
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
 from content.models import Title, Favorite, TitleRating
@@ -61,25 +60,6 @@ class TitleViewSet(viewsets.ReadOnlyModelViewSet):
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
-
-        serializer = self.get_serializer(qs, many=True)
-        return Response(serializer.data)
-
-    @action(detail=True, methods=['get'], permission_classes=[AllowAny])
-    def similar(self, request, pk=None):
-        title = self.get_object()
-
-        vector = SearchVector('name', weight='A') + SearchVector('description', weight='B')
-        query = SearchQuery(title.name)
-
-        qs = self.get_queryset().annotate(
-            rank=SearchRank(vector, query)
-        ).exclude(pk=title.pk).filter(rank__gte=0.05).order_by('-rank')[:10]
-
-        if not qs.exists():
-            tax_ids = title.taxonomy_items.values_list('id', flat=True)
-            qs = self.get_queryset().filter(taxonomy_items__in=tax_ids).exclude(pk=title.pk).distinct().order_by(
-                '-rating_score')[:10]
 
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)

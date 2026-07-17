@@ -34,7 +34,7 @@
 </template>
 
 <script setup>
-import {ref, onMounted} from 'vue';
+import {onMounted, ref} from 'vue';
 
 const props = defineProps({
   titleId: {
@@ -47,7 +47,7 @@ const titles = ref([]);
 
 const fetchSimilar = async () => {
   try {
-    const response = await fetch(`/api/v1/content/titles/${props.titleId}/similar/`);
+    const response = await fetch(`/api/v1/recommendations/similar/${props.titleId}/`);
     if (response.ok) {
       titles.value = await response.json();
     }
