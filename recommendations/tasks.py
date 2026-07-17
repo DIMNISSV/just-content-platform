@@ -4,7 +4,7 @@ from datetime import timedelta
 from celery import shared_task
 from django.utils import timezone
 
-from content.models import WatchHistory, TitleRating
+from content.models import WatchHistory, EpisodeWatchHistory, TitleRating
 from recommendations.services.profiler import build_profile_for_entity
 from users.models import User
 
@@ -47,3 +47,26 @@ def aggregate_user_profiles_task():
                 logger.error(f"Failed to build profile for guest {g_id}: {e}")
 
     logger.info(f"Profile aggregation complete. Updated {processed_users} users and {processed_guests} guests.")
+
+
+@shared_task
+def cleanup_guest_history_task():
+    """
+    Deletes watch history records that are not associated with any authenticated user
+    and are older than 30 days.
+    """
+    threshold = timezone.now() - timedelta(days=30)
+
+    # Cleanup Title History
+    deleted_titles, _ = WatchHistory.objects.filter(
+        user__isnull=True,
+        updated_at__lt=threshold
+    ).delete()
+
+    # Cleanup Episode History
+    deleted_eps, _ = EpisodeWatchHistory.objects.filter(
+        user__isnull=True,
+        updated_at__lt=threshold
+    ).delete()
+
+    logger.info(f"Guest cleanup complete. Removed {deleted_titles} title records and {deleted_eps} episode records.")

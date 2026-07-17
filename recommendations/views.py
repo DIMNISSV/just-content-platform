@@ -1,10 +1,10 @@
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
 from rest_framework.views import APIView
-
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from content.serializers import TitleSerializer
 from recommendations.services.scorer import get_recommendations
 from recommendations.services.velocity import get_trending_titles
+from recommendations.services.merger import merge_guest_profile
 
 
 class RecommendationsAPIView(APIView):
@@ -37,3 +37,26 @@ class TrendingAPIView(APIView):
 
         serializer = TitleSerializer(titles, many=True, context={'request': request})
         return Response(serializer.data)
+
+
+class MergeGuestAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        Merges guest history into the current authenticated user's account.
+        Expects 'guest_id' in the request body.
+        """
+        guest_id = request.data.get('guest_id')
+        if not guest_id:
+            return Response({"error": "guest_id is required"}, status=400)
+
+        try:
+            count = merge_guest_profile(user=request.user, guest_id=guest_id)
+            return Response({
+                "status": "success",
+                "merged_records": count,
+                "message": "Guest history has been successfully merged."
+            })
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)

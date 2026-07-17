@@ -128,6 +128,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'recommendations.tasks.aggregate_user_profiles_task',
         'schedule': crontab(minute=0, hour='*/4'),
     },
+    'cleanup-guest-history-daily': {
+        'task': 'recommendations.tasks.cleanup_guest_history_task',
+        'schedule': crontab(hour=4, minute=0),
+    },
 }
 
 LOG_DIR = BASE_DIR / 'logs'
