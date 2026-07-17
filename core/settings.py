@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'aggregator.apps.AggregatorConfig',
     'kodik_plugin.apps.KodikPluginConfig',
     'taxonomy.apps.TaxonomyConfig',
+    'recommendations.apps.RecommendationsConfig'
 ]
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
