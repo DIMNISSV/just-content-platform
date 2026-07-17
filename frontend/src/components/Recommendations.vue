@@ -4,9 +4,24 @@ import {ref, onMounted} from 'vue';
 const recommendations = ref([]);
 const isLoading = ref(true);
 
+const getOrCreateGuestId = () => {
+  let gId = localStorage.getItem('jcp_guest_id');
+  if (!gId) {
+    try {
+      gId = crypto.randomUUID();
+    } catch (e) {
+      gId = 'guest-' + Math.random().toString(36).substring(2, 15) + '-' + Date.now().toString(36);
+    }
+    localStorage.setItem('jcp_guest_id', gId);
+  }
+  return gId;
+};
+
 const fetchRecommendations = async () => {
   try {
-    const res = await fetch('/api/v1/content/recommendations/');
+    const guestId = getOrCreateGuestId();
+    // Обращение к новому многомерному API рекомендаций
+    const res = await fetch(`/api/v1/recommendations/?guest_id=${guestId}&limit=12`);
     if (res.ok) {
       recommendations.value = await res.json();
     }
@@ -30,10 +45,10 @@ onMounted(fetchRecommendations);
             class="aspect-[2/3] bg-gray-900 rounded-lg overflow-hidden mb-3 relative border border-gray-800 hover:border-brand transition">
           <img v-if="title.poster" :src="title.poster" :alt="title.name"
                class="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300">
-          <div v-else class="w-full h-full flex items-center justify-center text-gray-700 font-bold text-xl">
+          <div v-else class="w-full h-full flex items-center justify-center text-gray-700 font-bold text-xl bg-black">
             Нет постера
           </div>
-          <div class="absolute top-2 right-2 bg-black/70 px-2 py-1 rounded text-xs font-bold text-yellow-400">
+          <div class="absolute top-2 right-2 bg-black/80 px-2 py-1 rounded text-xs font-bold text-yellow-400">
             * {{ Number(title.rating_score).toFixed(1) }}
           </div>
         </div>
@@ -50,8 +65,7 @@ onMounted(fetchRecommendations);
             {{ t.name }}
           </span>
         </div>
-
-        <div class="flex justify-between text-xs text-gray-500 mt-1">
+        <div class="flex justify-between text-xs text-gray-500 mt-1 font-bold">
           <span>{{ title.release_year || '-' }}</span>
           <span>{{ title.type === 'MOVIE' ? 'Фильм' : 'Сериал' }}</span>
         </div>

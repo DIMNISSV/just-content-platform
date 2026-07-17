@@ -412,63 +412,6 @@ def continue_watching(request):
     return Response(serializer.data)
 
 
-@api_view(['GET'])
-def recommendations(request):
-    if not request.user.is_authenticated:
-        top_titles = Title.objects.order_by('-rating_score', '-votes_count')[:10]
-        return Response(TitleSerializer(top_titles, many=True).data)
-
-    recent_history = WatchHistory.objects.filter(user=request.user).order_by('-updated_at')[:3]
-    if not recent_history:
-        top_titles = Title.objects.order_by('-rating_score', '-votes_count')[:10]
-        return Response(TitleSerializer(top_titles, many=True).data)
-
-    watched_title_ids = WatchHistory.objects.filter(user=request.user).values_list('title_id', flat=True)
-    search_texts = [item.title.name for item in recent_history]
-    query_str = " | ".join(search_texts)
-
-    query = SearchQuery(query_str, search_type='raw')
-    vector = SearchVector('name', weight='A') + SearchVector('description', weight='B')
-
-    recommended = Title.objects.annotate(
-        rank=SearchRank(vector, query)
-    ).exclude(id__in=watched_title_ids).filter(rank__gte=0.05).order_by('-rank')[:10]
-
-    if len(recommended) < 10:
-        preferred_tax_items = set()
-        for item in recent_history:
-            for t in item.title.taxonomy_items.all():
-                preferred_tax_items.add(t.id)
-
-        user_favorites = Favorite.objects.filter(user=request.user).select_related('title').prefetch_related(
-            'title__taxonomy_items')
-        for fav in user_favorites:
-            for t in fav.title.taxonomy_items.all():
-                preferred_tax_items.add(t.id)
-
-        pad_amount = 10 - len(recommended)
-        extra_titles = Title.objects.filter(
-            taxonomy_items__in=preferred_tax_items
-        ).exclude(
-            id__in=watched_title_ids
-        ).exclude(
-            id__in=[t.id for t in recommended]
-        ).distinct().order_by(
-            '-rating_score')[:pad_amount]
-        recommended = list(recommended) + list(extra_titles)
-
-    if len(recommended) < 10:
-        pad_amount = 10 - len(recommended)
-        extra_titles = Title.objects.exclude(
-            id__in=watched_title_ids
-        ).exclude(
-            id__in=[t.id for t in recommended]
-        ).order_by('-rating_score')[:pad_amount]
-        recommended = list(recommended) + list(extra_titles)
-
-    return Response(TitleSerializer(recommended, many=True).data)
-
-
 class HomeView(TemplateView):
     template_name = 'content/home.html'
 

@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     TitleViewSet, player_manifest, rate_track_group,
-    player_telemetry, episode_player_telemetry, continue_watching, recommendations, WatchView, save_workbench,
+    player_telemetry, episode_player_telemetry, continue_watching, WatchView, save_workbench,
     EpisodeWatchView,
     GenreViewSet, CatalogView, content_tree_api, assign_file_api, EpisodeViewSet,
     TrackGroupViewSet, AdditionalTrackViewSet
@@ -23,7 +23,6 @@ urlpatterns = [
     path('api/v1/player/telemetry/', player_telemetry, name='player-telemetry'),
     path('api/v1/player/episode-telemetry/', episode_player_telemetry, name='episode-player-telemetry'),
     path('api/v1/content/history/', continue_watching, name='continue-watching'),
-    path('api/v1/content/recommendations/', recommendations, name='recommendations'),
     path('watch/episode/<uuid:pk>/', EpisodeWatchView.as_view(), name='watch-episode'),
     path('api/v1/content/workbench/save/<str:content_type_str>/<uuid:object_id>/', save_workbench,
          name='save-workbench'),
