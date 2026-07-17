@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "just-content-platform"
-version = "0.31.1"
+version = "0.32.0"
 description = ""
 authors = ["Dmitriy <dimnissv@yandex.kz>"]
 readme = "README.md"
@@ -24,6 +24,7 @@ requests = "^2.33.1"
 psycopg2-binary = "^2.9.12"
 concurrent-log-handler = "^0.9.29"
 django-celery-beat = "^2.9.0"
+ijson = "^3.5.1"
 
 
 [build-system]
