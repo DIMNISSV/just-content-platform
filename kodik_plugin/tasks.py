@@ -1,7 +1,10 @@
 import logging
+from datetime import timedelta
 
 from celery import shared_task
 from django.conf import settings
+from django.db.models import Q
+from django.utils import timezone
 
 from kodik_plugin.adapters.local_adapter import LocalServiceAdapter
 from kodik_plugin.client.list_api import KodikListClient
@@ -41,28 +44,32 @@ def sync_kodik_updates_task(limit: int = 100):
 @shared_task
 def update_existing_titles_task(title_type: str = 'SERIES', delay: float = 0.5, stale_minutes: int = 1440):
     """
-    Celery task to update already existing titles in the database
+    Celery dispatcher task to update already existing titles in the database
     with fresh data from the Kodik API (useful for ongoing series).
+    Dispatches a single atomic task for each title.
     """
-    token = getattr(settings, 'KODIK_API_TOKEN', '')
-    plugin_id = getattr(settings, 'KODIK_PLUGIN_ID', 1)
-    if not token:
-        logger.error("KODIK_API_TOKEN is not configured in Django settings. Aborting update task.")
-        return "Failed: Missing KODIK_API_TOKEN"
-    try:
-        client = KodikListClient(token=token)
-        adapter = LocalServiceAdapter(plugin_id=plugin_id)
-        orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
-        logger.info(f"Starting background update for existing {title_type} titles (Stale > {stale_minutes}m).")
-        success, error = orchestrator.run_update_existing(
-            title_type=title_type,
-            delay=delay,
-            stale_minutes=stale_minutes
-        )
-        return f"Update complete. Success: {success}, Errors: {error}"
-    except Exception as e:
-        logger.exception("Fatal error occurred during background existing titles update.")
-        return f"Failed: {str(e)}"
+    from content.models import Title
+
+    logger.info(f"Starting Fan-Out update dispatcher for existing {title_type} titles (Stale > {stale_minutes}m).")
+
+    query = ~Q(shiki_id='') | ~Q(kp_id='') | ~Q(imdb_id='') | ~Q(mdl_id='')
+    qs = Title.objects.filter(query)
+
+    if title_type in ['SERIES', 'MOVIE']:
+        qs = qs.filter(type=title_type)
+
+    if stale_minutes > 0:
+        stale_threshold = timezone.now() - timedelta(minutes=stale_minutes)
+        qs = qs.filter(updated_at__lt=stale_threshold)
+
+    title_ids = qs.values_list('id', flat=True)
+    count = 0
+
+    for t_id in title_ids:
+        refresh_single_title_task.delay(str(t_id))
+        count += 1
+
+    return f"Update dispatcher complete. Queued {count} titles for refresh."
 
 
 @shared_task
