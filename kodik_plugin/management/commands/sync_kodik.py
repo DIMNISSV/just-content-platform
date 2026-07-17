@@ -1,12 +1,13 @@
 import logging
+
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from kodik_plugin.adapters.http_adapter import HTTPWebhookAdapter
 from kodik_plugin.adapters.local_adapter import LocalServiceAdapter
 from kodik_plugin.client.list_api import KodikListClient
-from kodik_plugin.client.dump_api import KodikDumpClient
 from kodik_plugin.sync.orchestrator import KodikSyncOrchestrator
+from kodik_plugin.tasks import update_existing_titles_task, sync_dump_dispatcher_task
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +71,14 @@ class Command(BaseCommand):
             adapter = HTTPWebhookAdapter(webhook_url=webhook_url, secret_token=webhook_secret)
 
         if options['update_existing']:
-            client = KodikListClient(token=token)
-            orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
-            self.stdout.write(self.style.NOTICE(f"Starting to update existing {options['update_type']} titles..."))
-            success, error = orchestrator.run_update_existing(
+            self.stdout.write(
+                self.style.NOTICE(f"Dispatching Celery tasks to update existing {options['update_type']} titles..."))
+            update_existing_titles_task.delay(
                 title_type=options['update_type'],
                 delay=options['delay'],
                 stale_minutes=options['stale_minutes']
             )
-            self.stdout.write(self.style.SUCCESS(f"Update done. Success: {success}, Errors: {error}."))
+            self.stdout.write(self.style.SUCCESS("Tasks dispatched successfully. Check Celery logs for progress."))
             return
 
         is_dump = bool(options['dump'])
@@ -91,19 +91,16 @@ class Command(BaseCommand):
         active_specific_ids = {k: v for k, v in specific_ids.items() if v is not None}
 
         if is_dump:
-            client = KodikDumpClient(token=token)
-            orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
             dump_name = options['dump']
-            state_key = options['state_key'] or f"dump_sync_{dump_name.replace('/', '_')}"
-
-            self.stdout.write(self.style.NOTICE(f"Starting dump sync for {dump_name}..."))
-            success, error = orchestrator.run_sync_dump(
+            self.stdout.write(self.style.NOTICE(f"Dispatching Dump Sync task for {dump_name}..."))
+            sync_dump_dispatcher_task.delay(
                 dump_name=dump_name,
-                resume=options['resume'],
                 max_items=options['max_items'],
-                state_key=state_key,
                 dry_run=options['dry_run']
             )
+            self.stdout.write(
+                self.style.SUCCESS("Dump task dispatched. Check Celery logs for chunking and processing."))
+            return
         else:
             client = KodikListClient(token=token)
             orchestrator = KodikSyncOrchestrator(client=client, adapter=adapter, plugin_id=plugin_id)
@@ -122,7 +119,7 @@ class Command(BaseCommand):
                 use_search = True
                 self.stdout.write(self.style.WARNING("Specific ID provided. Using search endpoint. Resume ignored."))
 
-            self.stdout.write(self.style.NOTICE("Starting API sync..."))
+            self.stdout.write(self.style.NOTICE("Starting API sync synchronously..."))
             success, error = orchestrator.run_sync_api(
                 resume=options['resume'] if not active_specific_ids else False,
                 max_pages=options['max_pages'],
