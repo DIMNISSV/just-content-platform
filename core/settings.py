@@ -32,7 +32,7 @@ INSTALLED_APPS = [
     'aggregator.apps.AggregatorConfig',
     'kodik_plugin.apps.KodikPluginConfig',
     'taxonomy.apps.TaxonomyConfig',
-    'recommendations.apps.RecommendationsConfig'
+    'recommendations.apps.RecommendationsConfig',
 ]
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -123,6 +123,10 @@ CELERY_BEAT_SCHEDULE = {
     'verify-plugins-daily': {
         'task': 'aggregator.tasks.verify_plugin_registry',
         'schedule': crontab(hour=3, minute=22),
+    },
+    'aggregate-user-profiles': {
+        'task': 'recommendations.tasks.aggregate_user_profiles_task',
+        'schedule': crontab(minute=0, hour='*/4'),
     },
 }
 
