@@ -3,6 +3,7 @@ import logging
 from aggregator.models import ViewingSession
 from aggregator.services.session_manager import SessionManager
 from content.services.history_service import update_episode_progress, update_title_progress
+from recommendations.services.velocity import log_title_view
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,8 @@ class TelemetryProcessor:
             except TrackGroup.DoesNotExist:
                 pass
 
+        viewer_id = str(user.id)
+
         # Determine if it's an episode or a title and update progress
         from content.models import Title, Episode
         if content_type.model == 'episode':
@@ -58,6 +61,7 @@ class TelemetryProcessor:
                     last_audio_track_name=audio_track_name,
                     last_quality_label=quality_label
                 )
+                log_title_view(str(episode.title_id), viewer_id)
                 return {
                     "status": "saved",
                     "progress_ms": episode_history.progress_ms,
@@ -79,6 +83,7 @@ class TelemetryProcessor:
                     last_audio_track_name=audio_track_name,
                     last_quality_label=quality_label
                 )
+                log_title_view(str(title.id), viewer_id)
                 return {
                     "status": "saved",
                     "progress_ms": title_history.progress_ms,

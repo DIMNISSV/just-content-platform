@@ -17,6 +17,7 @@ from aggregator.services.session_manager import SessionManager
 from aggregator.tasks import enqueue_title_refresh
 from media.models import Asset, RawMediaFile, AssetVariant, TranscodingPreset
 from media.tasks import extract_stream_task
+from recommendations.services.velocity import log_title_view, get_trending_titles
 from taxonomy.models import TaxonomyItem
 from taxonomy.serializers import TaxonomyItemSerializer
 from users.models import UserPreference
@@ -314,6 +315,8 @@ def player_telemetry(request):
 
     from content.services.history_service import update_episode_progress, update_title_progress
 
+    viewer_id = str(user.id) if user else str(guest_id)
+
     if episode_id:
         try:
             episode = Episode.objects.get(id=episode_id)
@@ -328,6 +331,9 @@ def player_telemetry(request):
                 last_quality_label=quality_label,
                 guest_id=guest_id
             )
+
+            log_title_view(str(title.id), viewer_id)
+
             return Response({"status": "saved", "progress_ms": episode_history.progress_ms})
         except Episode.DoesNotExist:
             return Response({"error": "Episode not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -343,6 +349,9 @@ def player_telemetry(request):
             last_quality_label=quality_label,
             guest_id=guest_id
         )
+
+        log_title_view(str(title.id), viewer_id)
+
         return Response({"status": "saved", "progress_ms": title_history.progress_ms})
 
 
@@ -392,6 +401,9 @@ def episode_player_telemetry(request):
         guest_id=guest_id
     )
 
+    viewer_id = str(user.id) if user else str(guest_id)
+    log_title_view(str(episode.title_id), viewer_id)
+
     return Response({
         "status": "saved",
         "episode_id": str(episode.id),
@@ -417,7 +429,10 @@ class HomeView(TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['trending'] = Title.objects.all().order_by('-rating_score', '-created_at')[:12]
+
+        # Интеграция динамического тренда из Redis
+        context['trending'] = get_trending_titles(limit=12)
+
         context['new_movies'] = Title.objects.filter(type=Title.Type.MOVIE).order_by('-created_at')[:6]
         context['new_series'] = Title.objects.filter(type=Title.Type.SERIES).order_by('-created_at')[:6]
         return context
