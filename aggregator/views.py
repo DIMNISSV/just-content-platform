@@ -1,11 +1,12 @@
 import logging
 
+from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ObjectDoesNotExist
+from django.views.decorators.csrf import csrf_exempt  # Добавлен импорт
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ObjectDoesNotExist
 
 from .models import PluginProvider
 from .services import process_plugin_payload
@@ -66,6 +67,7 @@ def player_session_start(request):
     }, status=status.HTTP_201_CREATED)
 
 
+@csrf_exempt  # Добавлено: сессия идентифицируется по токену, CSRF не требуется
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def player_session_heartbeat(request):
@@ -83,6 +85,7 @@ def player_session_heartbeat(request):
         return Response({"error": "Session not found or expired"}, status=status.HTTP_404_NOT_FOUND)
 
 
+@csrf_exempt  # Добавлено: сессия идентифицируется по токену, CSRF не требуется
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def player_session_telemetry(request):

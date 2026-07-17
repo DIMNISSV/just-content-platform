@@ -25,16 +25,18 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
         }
     };
 
-    // ОБНОВЛЕННАЯ ФУНКЦИЯ: теперь принимает опциональный payload
     const sendTelemetry = async (externalPayload = null) => {
         let payload = {};
         let endpoint = '';
-        let headers = {
+        // Всегда добавляем CSRF токен, если он есть, для предотвращения 403
+        const headers = {
             'Content-Type': 'application/json',
         };
+        if (props.csrfToken) {
+            headers['X-CSRFToken'] = props.csrfToken;
+        }
 
         if (externalPayload) {
-            // РЕЖИМ ПЛАГИНА: используем данные плагина и сессионный токен
             if (!props.sessionToken) {
                 console.warn("Plugin tried to send telemetry, but no session token available.");
                 return;
@@ -44,9 +46,7 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
                 session_token: props.sessionToken
             };
             endpoint = '/api/v1/player/session-telemetry/';
-            // Для сессионного эндпоинта CSRF не обязателен, так как токен сессии сам по себе является секретом
         } else {
-            // АВТОМАТИЧЕСКИЙ РЕЖИМ: собираем данные из DOM
             if (!videoRef.value || isNaN(videoRef.value.duration)) return;
 
             const currentMs = Math.floor(videoRef.value.currentTime * 1000);
@@ -78,8 +78,6 @@ export function usePlayerTelemetry(props, activeGroupId, activeVideo, activeAudi
             } else {
                 payload.episode_id = props.episodeId;
             }
-
-            headers['X-CSRFToken'] = props.csrfToken;
         }
 
         try {
