@@ -1,4 +1,6 @@
+import json
 import logging
+import os
 from datetime import timedelta
 
 from celery import shared_task
@@ -7,6 +9,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from kodik_plugin.adapters.local_adapter import LocalServiceAdapter
+from kodik_plugin.client.dump_api import KodikDumpClient
 from kodik_plugin.client.list_api import KodikListClient
 from kodik_plugin.sync.orchestrator import KodikSyncOrchestrator
 
@@ -159,3 +162,136 @@ def deep_sync_kodik_title_task(kp_id=None, imdb_id=None, shiki_id=None, mdl_id=N
     except Exception as e:
         logger.exception(f"Fatal error occurred during background deep sync execution for {search_kwargs}.")
         return f"Failed: {str(e)}"
+
+
+@shared_task
+def sync_dump_dispatcher_task(dump_name: str, max_items: int = 0, dry_run: bool = False, chunk_size: int = 1000):
+    import ijson
+
+    token = getattr(settings, 'KODIK_API_TOKEN', '')
+    if not token:
+        logger.error("KODIK_API_TOKEN is missing. Aborting dump dispatcher.")
+        return "Failed: Missing Token"
+
+    client = KodikDumpClient(token=token)
+    try:
+        file_path = client.download_dump(dump_name)
+    except Exception as e:
+        logger.error(f"Failed to download dump {dump_name}: {e}")
+        return "Failed: Dump Download Error"
+
+    chunk_files = []
+    current_chunk = []
+    chunk_index = 0
+    items_processed = 0
+
+    logger.info(f"Starting chunked parsing of dump {dump_name} via ijson.")
+
+    try:
+        with open(file_path, 'rb') as f:
+            for item in ijson.items(f, 'item'):
+                if max_items and items_processed >= max_items:
+                    break
+
+                current_chunk.append(item)
+                items_processed += 1
+
+                if len(current_chunk) >= chunk_size:
+                    chunk_filename = f"{file_path}_chunk_{chunk_index}.json"
+                    with open(chunk_filename, 'w', encoding='utf-8') as cf:
+                        json.dump(current_chunk, cf)
+                    chunk_files.append(chunk_filename)
+
+                    process_dump_chunk_task.delay(chunk_filename, dry_run)
+
+                    current_chunk = []
+                    chunk_index += 1
+
+        if current_chunk:
+            chunk_filename = f"{file_path}_chunk_{chunk_index}.json"
+            with open(chunk_filename, 'w', encoding='utf-8') as cf:
+                json.dump(current_chunk, cf)
+            chunk_files.append(chunk_filename)
+            process_dump_chunk_task.delay(chunk_filename, dry_run)
+
+    except Exception as e:
+        logger.exception(f"Failed during dump chunking for {dump_name}")
+        raise e
+    finally:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+    logger.info(f"Dispatched {len(chunk_files)} chunks ({items_processed} items) for dump {dump_name}")
+    return f"Dispatched {len(chunk_files)} chunks."
+
+
+@shared_task
+def process_dump_chunk_task(chunk_file_path: str, dry_run: bool = False):
+    from content.models import Title
+    from kodik_plugin.models import KodikDumpProcessedID
+    from kodik_plugin.mapper.title_mapper import extract_external_ids
+
+    if not os.path.exists(chunk_file_path):
+        return f"File {chunk_file_path} not found"
+
+    with open(chunk_file_path, 'r', encoding='utf-8') as f:
+        items = json.load(f)
+
+    plugin_id = getattr(settings, 'KODIK_PLUGIN_ID', 1)
+    adapter = LocalServiceAdapter(plugin_id=plugin_id)
+    orchestrator = KodikSyncOrchestrator(client=None, adapter=adapter, plugin_id=plugin_id)
+
+    success_count, error_count = 0, 0
+    titles_to_create = 0
+
+    try:
+        for item in items:
+            ext_ids = extract_external_ids(item)
+            kp_id = ext_ids.get('kp_id')
+            imdb_id = ext_ids.get('imdb_id')
+            shiki_id = ext_ids.get('shiki_id')
+            mdl_id = ext_ids.get('mdl_id')
+
+            query = Q()
+            if kp_id: query |= Q(kp_id=kp_id)
+            if imdb_id: query |= Q(imdb_id=imdb_id)
+            if shiki_id: query |= Q(shiki_id=shiki_id)
+            if mdl_id: query |= Q(mdl_id=mdl_id)
+
+            if not query:
+                continue
+
+            is_processed = KodikDumpProcessedID.objects.filter(query).exists()
+            is_already_in_db = Title.objects.filter(query).exists()
+
+            if is_processed or is_already_in_db:
+                continue
+
+            if dry_run:
+                titles_to_create += 1
+            else:
+                succ, err = orchestrator._process_item(item)
+                success_count += succ
+                error_count += err
+
+                deep_sync_kodik_title_task.delay(
+                    kp_id=kp_id,
+                    imdb_id=imdb_id,
+                    shiki_id=shiki_id,
+                    mdl_id=mdl_id
+                )
+
+                KodikDumpProcessedID.objects.create(
+                    kp_id=kp_id,
+                    imdb_id=imdb_id,
+                    shiki_id=shiki_id,
+                    mdl_id=mdl_id
+                )
+    finally:
+        if os.path.exists(chunk_file_path):
+            os.remove(chunk_file_path)
+
+    if dry_run:
+        return f"[DRY-RUN] Would create {titles_to_create} titles."
+
+    return f"Chunk processed. Success: {success_count}, Errors: {error_count}"
